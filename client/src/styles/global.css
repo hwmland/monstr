@@ -1,0 +1,54 @@
+:root {
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  color: #1b1b1b;
+  background-color: #f7f7f7;
+}
+
+body {
+  margin: 0;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  background-color: #24292f;
+  color: white;
+  padding: 1rem 1.5rem;
+}
+
+.app-header .brand {
+  color: inherit;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.app-main {
+  flex: 1;
+  padding: 1.5rem;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.log-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.log-table th,
+.log-table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid #ddd;
+}
+
+.error {
+  color: #b3261e;
+}

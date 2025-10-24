@@ -1,0 +1,26 @@
+# Node
+client/node_modules/
+client/dist/
+client/.vite/
+client/.eslintcache
+
+# Python
+server/.venv/
+server/.vent.monstr/
+**/__pycache__/
+server/.mypy_cache/
+server/.pytest_cache/
+server/.ruff_cache/
+
+# Editors
+.vscode/
+.idea/
+
+# Environment
+.env
+
+# Copilot
+.github/copilot-instructions.md
+
+# Data
+data/
