@@ -20,18 +20,28 @@ const HomePage = () => {
           <thead>
             <tr>
               <th>ID</th>
-              <th>Source</th>
-              <th>Content</th>
-              <th>Ingested</th>
+              <th>Timestamp</th>
+              <th>Level</th>
+              <th>Area</th>
+              <th>Action</th>
+              <th>Node</th>
+              <th>Details</th>
             </tr>
           </thead>
           <tbody>
             {entries.map((entry) => (
               <tr key={entry.id}>
                 <td>{entry.id}</td>
+                <td>
+                  {entry.timestamp ? new Date(entry.timestamp).toLocaleString() : "—"}
+                </td>
+                <td>{entry.level}</td>
+                <td>{entry.area}</td>
+                <td>{entry.action}</td>
                 <td>{entry.source}</td>
-                <td>{entry.content}</td>
-                <td>{new Date(entry.ingestedAt).toLocaleString()}</td>
+                <td>
+                  <code>{JSON.stringify(entry.details)}</code>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -40,5 +50,3 @@ const HomePage = () => {
     </section>
   );
 };
-
-export default HomePage;

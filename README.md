@@ -6,7 +6,7 @@ Monstr is a full-stack log monitoring platform. The asynchronous FastAPI backend
 
 - Async log tailing across multiple files defined at startup
 - Automatic database bootstrap and periodic data retention cleanup
-- REST API for querying stored log entries (served under `/api`)
+- REST API for querying stored log entries and transfer events (served under `/api`)
 - Production build of the client served directly by the Python backend
 - Modern React stack (Vite, TypeScript, Zustand) with testing via Vitest and Testing Library
 
@@ -49,10 +49,10 @@ Deactivate the environment at any time with `deactivate`.
 
 ```powershell
 # from the project root with the virtual environment still activated
-python -m server.src.cli --log C:\path\to\log1.txt --log C:\path\to\log2.txt
+python -m server.src.cli --node myNode:.\testdata\node.log --node otherNode:C:\path\to\node2.log
 ```
 
-The CLI accepts additional overrides such as `--host`, `--port`, and `--log-level`. The backend serves the OpenAPI docs at `http://127.0.0.1:8000/api/docs` and the built frontend (when present) at `http://127.0.0.1:8000/`.
+Node specifications follow the `NAME:PATH` pattern so each database record references the logical node name instead of the filesystem path. The CLI also accepts overrides such as `--host`, `--port`, and `--log-level`. The backend serves the OpenAPI docs at `http://127.0.0.1:8000/api/docs` and the built frontend (when present) at `http://127.0.0.1:8000/`.
 
 ### Backend Tests
 

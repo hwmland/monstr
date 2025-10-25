@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import argparse
 import logging
+import logging.config
 from typing import Any, Dict
 
 import uvicorn
+from uvicorn.config import LOGGING_CONFIG
+
+from copy import deepcopy
 
 from .config import Settings
 from .core.app import create_app
@@ -15,11 +19,11 @@ logger = logging.getLogger(__name__)
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Monstr log monitoring service")
     parser.add_argument(
-        "--log",
-        dest="logs",
+        "--node",
+        dest="nodes",
         action="append",
         default=[],
-        help="Absolute path to a log file to monitor. Repeat for multiple files.",
+        help="Monitor a node specified as NAME:PATH to its log file. Repeat for multiple nodes.",
     )
     parser.add_argument("--host", dest="host", help="API host binding override")
     parser.add_argument("--port", dest="port", type=int, help="API port binding override")
@@ -33,8 +37,8 @@ def build_settings(args: argparse.Namespace) -> Settings:
     base = Settings()
     overrides: Dict[str, Any] = {}
 
-    if args.logs:
-        overrides["log_sources"] = args.logs
+    if getattr(args, "nodes", None):
+        overrides["log_sources"] = args.nodes
     if args.host:
         overrides["api_host"] = args.host
     if args.port:
@@ -51,17 +55,46 @@ def main() -> None:
     args = parse_args()
     settings = build_settings(args)
 
-    logging.basicConfig(level=getattr(logging, settings.api_log_level.upper(), logging.INFO))
+    log_config = deepcopy(LOGGING_CONFIG)
+    desired_level = settings.api_log_level.upper()
+
+    # Ensure required sections exist before overriding levels
+    log_config.setdefault("root", {"level": desired_level, "handlers": ["default"]})
+    log_config.setdefault("loggers", {})
+
+    log_config["root"]["level"] = desired_level
+    for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        logger_cfg = log_config["loggers"].setdefault(
+            logger_name,
+            {
+                "handlers": ["default"],
+                "level": desired_level,
+                "propagate": logger_name != "uvicorn.access",
+            },
+        )
+        logger_cfg["level"] = desired_level
+
+    logging.config.dictConfig(log_config)
 
     logger.info(
-        "Starting API on %s:%s monitoring %d log file(s)",
+    "Starting API on %s:%s monitoring %d node(s)",
         settings.api_host,
         settings.api_port,
         len(settings.log_sources),
     )
 
     app = create_app(settings)
-    uvicorn.run(app, host=settings.api_host, port=settings.api_port, log_level=settings.api_log_level)
+
+    try:
+        uvicorn.run(
+            app,
+            host=settings.api_host,
+            port=settings.api_port,
+            log_level=settings.api_log_level,
+            log_config=log_config,
+        )
+    except KeyboardInterrupt:
+        logger.info("Shutdown requested by user.")
 
 
 if __name__ == "__main__":

@@ -3,12 +3,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from ..config import Settings
 from ..database import SessionFactory
 from ..repositories.log_entries import LogEntryRepository
+from ..repositories.transfers import TransferRepository
 
 logger = logging.getLogger(__name__)
 
@@ -37,13 +38,19 @@ class CleanupService:
 
     async def _run(self) -> None:
         while not self._stop_event.is_set():
-            cutoff = datetime.utcnow() - timedelta(minutes=self._settings.retention_minutes)
+            cutoff = datetime.now(timezone.utc) - timedelta(minutes=self._settings.retention_minutes)
             try:
                 async with SessionFactory() as session:
-                    repository = LogEntryRepository(session)
-                    deleted = await repository.delete_older_than(cutoff)
-                    if deleted:
-                        logger.info("Deleted %d expired log entries", deleted)
+                    log_repository = LogEntryRepository(session)
+                    transfer_repository = TransferRepository(session)
+
+                    deleted_logs = await log_repository.delete_older_than(cutoff)
+                    deleted_transfers = await transfer_repository.delete_older_than(cutoff)
+
+                    if deleted_logs:
+                        logger.info("Deleted %d expired log entries", deleted_logs)
+                    if deleted_transfers:
+                        logger.info("Deleted %d expired transfers", deleted_transfers)
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001

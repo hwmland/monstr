@@ -12,9 +12,14 @@ export const apiClient = axios.create({
 const mapLogEntry = (payload: Record<string, unknown>): LogEntry => ({
   id: Number(payload.id),
   source: String(payload.source ?? ""),
-  content: String(payload.content ?? ""),
-  ingestedAt: String(payload.ingested_at ?? payload.ingestedAt ?? ""),
-  processed: Boolean(payload.processed)
+  timestamp: String(payload.timestamp ?? ""),
+  level: String(payload.level ?? ""),
+  area: String(payload.area ?? ""),
+  action: String(payload.action ?? ""),
+  details:
+    typeof payload.details === "object" && payload.details !== null
+      ? (payload.details as Record<string, unknown>)
+      : {}
 });
 
 export const fetchLogEntries = async (

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -20,8 +20,9 @@ class Settings(BaseSettings):
     log_batch_size: int = 32
 
     cleanup_interval_seconds: int = 300
-    retention_minutes: int = 1440
+    retention_minutes: int = 1440 * 7 * 4 # 4 weeks in minutes
     frontend_dist_dir: Optional[str] = "../client/dist"
+    unprocessed_log_dir: str = "../data/"
 
     model_config = SettingsConfigDict(
         env_prefix="MONSTR_",
@@ -39,9 +40,34 @@ class Settings(BaseSettings):
         raise ValueError("Database URL is not pointing to a SQLite database")
 
     @property
+    def parsed_log_sources(self) -> List[Tuple[str, Path]]:
+        """Normalize declared log node specifications into name/path tuples."""
+        parsed: List[Tuple[str, Path]] = []
+        for raw in self.log_sources:
+            try:
+                node_name, path_spec = raw.split(":", 1)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid node specification '{raw}'. Expected format NAME:PATH."
+                ) from exc
+
+            node_name = node_name.strip()
+            path_spec = path_spec.strip()
+
+            if not node_name:
+                raise ValueError(f"Node specification '{raw}' is missing a node name.")
+            if not path_spec:
+                raise ValueError(f"Node specification '{raw}' is missing a log path.")
+
+            path = Path(path_spec).expanduser().resolve()
+            parsed.append((node_name, path))
+
+        return parsed
+
+    @property
     def sanitized_log_sources(self) -> List[Path]:
         """Normalize declared log source paths."""
-        return [Path(source).expanduser().resolve() for source in self.log_sources]
+        return [path for _, path in self.parsed_log_sources]
 
     @property
     def frontend_path(self) -> Optional[Path]:
@@ -53,4 +79,14 @@ class Settings(BaseSettings):
         if not candidate.is_absolute():
             base_dir = Path(__file__).resolve().parent.parent
             candidate = (base_dir / candidate).resolve()
+        return candidate
+
+    @property
+    def unprocessed_log_directory(self) -> Path:
+        """Directory where unprocessed log lines will be recorded."""
+        candidate = Path(self.unprocessed_log_dir)
+        if not candidate.is_absolute():
+            base_dir = Path(__file__).resolve().parent.parent
+            candidate = (base_dir / candidate).resolve()
+        candidate.mkdir(parents=True, exist_ok=True)
         return candidate

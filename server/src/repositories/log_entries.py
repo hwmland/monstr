@@ -19,21 +19,28 @@ class LogEntryRepository:
     async def create_many(self, items: Iterable[LogEntryCreate]) -> Sequence[LogEntry]:
         records = [LogEntry(**item.model_dump()) for item in items]
         self._session.add_all(records)
+        await self._session.flush()
         await self._session.commit()
-        for record in records:
-            await self._session.refresh(record)
         return records
 
     async def list(self, filters: LogEntryFilters) -> Sequence[LogEntry]:
-        stmt = select(LogEntry).order_by(LogEntry.ingested_at.desc()).limit(filters.limit)
+        stmt = select(LogEntry).order_by(LogEntry.timestamp.desc())
         if filters.source:
             stmt = stmt.where(LogEntry.source == filters.source)
+        if filters.level:
+            stmt = stmt.where(LogEntry.level == filters.level)
+        if filters.area:
+            stmt = stmt.where(LogEntry.area == filters.area)
+        if filters.action:
+            stmt = stmt.where(LogEntry.action == filters.action)
+
+        stmt = stmt.limit(filters.limit)
 
         result = await self._session.execute(stmt)
         return tuple(result.scalars())
 
     async def delete_older_than(self, cutoff: datetime) -> int:
-        stmt = delete(LogEntry).where(LogEntry.ingested_at < cutoff)
+        stmt = delete(LogEntry).where(LogEntry.timestamp < cutoff)
         result = await self._session.execute(stmt)
         await self._session.commit()
         return result.rowcount or 0
