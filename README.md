@@ -81,6 +81,60 @@ npm test      # runs Vitest
 
 During development the backend API remains available at `http://127.0.0.1:8000/api`.
 
+## Container Image
+
+The repository includes a multi-stage Dockerfile that builds the Vite client and bundles it alongside the FastAPI server inside a slim Python runtime.
+
+### Build the Image
+
+```powershell
+docker build -t monstr .
+```
+
+The build performs these steps:
+
+- installs Node.js dependencies and compiles the client into `client/dist`
+- creates a Python virtual environment, installs the backend dependencies, and copies the server code
+- assembles a final `python:3.11-slim` image containing the API, background workers, and built static assets
+
+### Run the Container
+
+When running the container you must expose the logs you want to monitor and declare them via the `MONSTR_LOG_SOURCES` environment variable. The value accepts a comma-separated list of `NAME:/absolute/path/to/log.log` entries.
+
+```powershell
+docker run ^
+	-p 8000:8000 ^
+	-e MONSTR_LOG_SOURCES="hashnode:/logs/hash.log,blobnode:/logs/blob.log" ^
+	-v ${PWD}\testdata:/logs:ro ^
+	monstr
+```
+
+The container listens on port 8000 and automatically serves the compiled frontend at `/` and the API at `/api`.
+
+### Example docker-compose.yml
+
+```yaml
+services:
+	monstr:
+		build: .
+		image: monstr:latest
+		ports:
+			- "8000:8000"
+		environment:
+			MONSTR_LOG_SOURCES: "hashnode:/logs/hash.log,blobnode:/logs/blob.log"
+			MONSTR_API_LOG_LEVEL: "info"
+		volumes:
+			- ./testdata:/logs:ro
+```
+
+Start the stack with:
+
+```bash
+docker compose up --build
+```
+
+The compose file mounts the sample logs under `/logs` (read-only) and instructs the container to ingest them using the `MONSTR_LOG_SOURCES` declaration.
+
 ## Next Steps
 
 - Define the concrete parsing rules in `server/src/services/log_monitor.py`.

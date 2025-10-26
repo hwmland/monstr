@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,6 +32,19 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @field_validator("log_sources", mode="before")
+    @classmethod
+    def _coerce_log_sources(cls, value):
+        """Allow comma or newline separated env strings for log sources."""
+        if value in (None, ""):
+            return []
+        if isinstance(value, str):
+            cleaned = value.replace("\n", ",")
+            return [item.strip() for item in cleaned.split(",") if item.strip()]
+        if isinstance(value, (tuple, set, list)):
+            return [str(item).strip() for item in value if str(item).strip()]
+        return value
 
     @property
     def database_path(self) -> Path:
