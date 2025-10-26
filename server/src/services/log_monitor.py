@@ -325,7 +325,7 @@ class LogMonitorService:
                 if result is None:
                     return None
                 log_payload, reputation_payload = result
-                return log_payload, None, reputation_payload
+                return None, None, reputation_payload
             if area == "pieces:trash":
                 log_payload = self._process_pieces_trash_payload(payload)
                 return log_payload, None, None

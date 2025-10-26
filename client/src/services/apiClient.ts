@@ -1,30 +1,30 @@
 import axios from "axios";
 
-import type { LogEntry, LogEntryQueryParams } from "../types";
+import type { NodeInfo } from "../types";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
+const DEFAULT_API_BASE_URL = import.meta.env.DEV ? "http://localhost:8000/api" : "/api";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL;
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10_000
 });
 
-const mapLogEntry = (payload: Record<string, unknown>): LogEntry => ({
-  id: Number(payload.id),
-  source: String(payload.source ?? ""),
-  timestamp: String(payload.timestamp ?? ""),
-  level: String(payload.level ?? ""),
-  area: String(payload.area ?? ""),
-  action: String(payload.action ?? ""),
-  details:
-    typeof payload.details === "object" && payload.details !== null
-      ? (payload.details as Record<string, unknown>)
-      : {}
-});
+export const fetchNodes = async (): Promise<NodeInfo[]> => {
+  const response = await apiClient.get("/nodes");
+  const { data } = response;
+  const items = Array.isArray(data)
+    ? data
+    : data && typeof data === "object" && Array.isArray((data as Record<string, unknown>).nodes)
+    ? (data as { nodes: unknown[] }).nodes
+    : undefined;
 
-export const fetchLogEntries = async (
-  params: LogEntryQueryParams = {}
-): Promise<LogEntry[]> => {
-  const response = await apiClient.get("/logs", { params });
-  return response.data.map((item: Record<string, unknown>) => mapLogEntry(item));
+  if (!Array.isArray(items)) {
+    throw new Error("Unexpected nodes response format");
+  }
+
+  return items.map((item: Record<string, unknown>) => ({
+    name: String(item.name ?? ""),
+    path: String(item.path ?? ""),
+  }));
 };

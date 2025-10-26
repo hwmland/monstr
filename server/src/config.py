@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     retention_minutes: int = 1440 * 7 * 4 # 4 weeks in minutes
     frontend_dist_dir: Optional[str] = "../client/dist"
     unprocessed_log_dir: str = "../data/"
+    cors_allow_origins: List[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
     model_config = SettingsConfigDict(
         env_prefix="MONSTR_",
