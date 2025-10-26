@@ -12,7 +12,7 @@ from ...schemas import LogEntryFilters, LogEntryRead
 router = APIRouter(prefix="/api/logs", tags=["logs"])
 
 
-@router.get("/", response_model=list[LogEntryRead])
+@router.get("/", response_model=list[LogEntryRead], tags=["raw"])
 async def list_logs(
     filters: LogEntryFilters = Depends(),
     session: AsyncSession = Depends(get_session),

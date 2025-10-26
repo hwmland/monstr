@@ -72,6 +72,33 @@ class ReputationFilters(BaseModel):
     limit: int = Field(default=100, ge=1, le=1000, description="Maximum number of records to return")
 
 
+class ReputationPanelRequest(BaseModel):
+    nodes: list[str] = Field(
+        default_factory=list,
+        description="Nodes to include when aggregating reputation metrics",
+    )
+
+
+class SatelliteReputationRead(BaseModel):
+    satellite_id: str
+    timestamp: datetime
+    audits_total: int
+    audits_success: int
+    score_audit: float
+    score_online: float
+    score_suspension: float
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NodeReputationRead(BaseModel):
+    node: str = Field(..., description="Configured node name")
+    satellites: list[SatelliteReputationRead] = Field(
+        default_factory=list,
+        description="Reputation metrics grouped by satellite",
+    )
+
+
 class TransferCreate(BaseModel):
     source: str = Field(..., description="Configured node name for the log source")
     timestamp: datetime = Field(..., description="Timestamp recorded in the log entry")

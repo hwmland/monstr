@@ -64,6 +64,18 @@ class ReputationRepository:
         result = await self._session.execute(stmt)
         return tuple(result.scalars())
 
+    async def list_for_sources(self, sources: Sequence[str]) -> Sequence[Reputation]:
+        if not sources:
+            return ()
+
+        stmt = (
+            select(Reputation)
+            .where(Reputation.source.in_(tuple(sources)))
+            .order_by(Reputation.source, Reputation.satellite_id)
+        )
+        result = await self._session.execute(stmt)
+        return tuple(result.scalars())
+
     def _ensure_timezone(self, value: datetime) -> datetime:
         """Normalize timestamps so comparisons don't fail on naive vs aware datetimes."""
         if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:

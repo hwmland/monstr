@@ -102,6 +102,22 @@ a {
   flex-wrap: wrap;
 }
 
+.panel__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.button--ghost {
+  background: transparent;
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+.button--ghost:hover {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.5);
+}
+
 .panel__title {
   margin: 0;
   font-size: 1.1rem;
@@ -122,6 +138,25 @@ a {
   margin-top: 0.5rem;
   color: var(--color-danger);
   font-weight: 500;
+}
+
+.panel-picker {
+  margin-top: 0.5rem;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 0.5rem 0.75rem;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.panel-picker__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--color-text);
 }
 
 .panel__status,
@@ -150,6 +185,8 @@ a {
   transition: border-color 150ms ease, transform 150ms ease, background-color 150ms ease;
   width: max-content;
   min-width: 0;
+  cursor: pointer;
+  user-select: none;
 }
 
 .node-card:hover {
@@ -158,12 +195,89 @@ a {
   transform: translateY(-1px);
 }
 
+.node-card:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.65);
+  outline-offset: 2px;
+}
+
+.node-card--selected {
+  background: rgba(56, 189, 248, 0.22);
+  border-color: rgba(56, 189, 248, 0.75);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.15);
+}
+
 .node-card__name {
   margin: 0;
   font-weight: 600;
   font-size: 0.85rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.reputations-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+@media (min-width: 768px) {
+  .reputations-grid {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  }
+}
+
+.reputation-card {
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.reputation-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.25rem;
+}
+
+.reputation-card__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.reputation-card__empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.reputation-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.reputation-table th,
+.reputation-table td {
+  padding: 0.3rem 0.35rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.reputation-table tbody tr:last-of-type th,
+.reputation-table tbody tr:last-of-type td {
+  border-bottom: none;
+}
+
+.reputation-table th {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.reputation-table td {
+  color: var(--color-text-muted);
 }
 
 @media (max-width: 640px) {

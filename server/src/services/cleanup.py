@@ -6,8 +6,8 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from .. import database
 from ..config import Settings
-from ..database import SessionFactory
 from ..repositories.log_entries import LogEntryRepository
 from ..repositories.transfers import TransferRepository
 
@@ -40,7 +40,7 @@ class CleanupService:
         while not self._stop_event.is_set():
             cutoff = datetime.now(timezone.utc) - timedelta(minutes=self._settings.retention_minutes)
             try:
-                async with SessionFactory() as session:
+                async with database.SessionFactory() as session:
                     log_repository = LogEntryRepository(session)
                     transfer_repository = TransferRepository(session)
 

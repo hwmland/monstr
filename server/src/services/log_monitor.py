@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import aiofiles
 
 from ..config import Settings
-from ..database import SessionFactory
+from .. import database
 from ..repositories.log_entries import LogEntryRepository
 from ..repositories.reputations import ReputationRepository
 from ..repositories.transfers import TransferRepository
@@ -169,7 +169,7 @@ class LogMonitorService:
         transfer_count = len(transfer_buffer)
         reputation_count = len(reputation_buffer)
 
-        async with SessionFactory() as session:
+        async with database.SessionFactory() as session:
             log_repository = LogEntryRepository(session)
             transfer_repository = TransferRepository(session)
             reputation_repository = ReputationRepository(session)
@@ -325,7 +325,7 @@ class LogMonitorService:
                 if result is None:
                     return None
                 log_payload, reputation_payload = result
-                return None, None, reputation_payload
+                return log_payload, None, reputation_payload
             if area == "pieces:trash":
                 log_payload = self._process_pieces_trash_payload(payload)
                 return log_payload, None, None

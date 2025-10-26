@@ -12,7 +12,7 @@ from ...schemas import TransferFilters, TransferRead
 router = APIRouter(prefix="/api/transfers", tags=["transfers"])
 
 
-@router.get("", response_model=list[TransferRead])
+@router.get("", response_model=list[TransferRead], tags=["raw"])
 async def list_transfers(
     filters: TransferFilters = Depends(),
     session: AsyncSession = Depends(get_session),

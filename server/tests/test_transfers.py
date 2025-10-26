@@ -8,7 +8,7 @@ from sqlalchemy import delete
 
 from server.src.config import Settings
 from server.src.core.app import create_app
-from server.src.database import SessionFactory, init_database
+from server.src import database
 from server.src.models import Transfer
 from server.src.repositories.transfers import TransferRepository
 from server.src.schemas import TransferCreate
@@ -17,11 +17,11 @@ from server.src.schemas import TransferCreate
 @pytest.mark.asyncio
 async def test_list_transfers_empty() -> None:
     app = create_app(Settings(log_sources=[]))
-    await init_database()
+    await database.init_database()
     transport = ASGITransport(app=app)
 
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        async with SessionFactory() as session:
+        async with database.SessionFactory() as session:
             await session.execute(delete(Transfer))
             await session.commit()
 
@@ -47,11 +47,11 @@ async def test_list_transfers_filters() -> None:
         remote_address="1.2.3.4:7777",
     )
 
-    await init_database()
+    await database.init_database()
     transport = ASGITransport(app=app)
 
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        async with SessionFactory() as session:
+        async with database.SessionFactory() as session:
             await session.execute(delete(Transfer))
             await session.commit()
 

@@ -6,7 +6,7 @@ Monstr is a full-stack log monitoring platform. The asynchronous FastAPI backend
 
 - Async log tailing across multiple files defined at startup
 - Automatic database bootstrap and periodic data retention cleanup
-- REST API for querying stored log entries and transfer events (served under `/api`)
+- REST API for querying stored log, reputation, and transfer data (served under `/api`)
 - Production build of the client served directly by the Python backend
 - Modern React stack (Vite, TypeScript, Zustand) with testing via Vitest and Testing Library
 
@@ -116,7 +116,6 @@ The container listens on port 8000 and automatically serves the compiled fronten
 ```yaml
 services:
 	monstr:
-		build: .
 		image: monstr:latest
 		ports:
 			- "8000:8000"

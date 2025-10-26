@@ -8,7 +8,7 @@ from sqlalchemy import delete
 
 from server.src.config import Settings
 from server.src.core.app import create_app
-from server.src.database import SessionFactory, init_database
+from server.src import database
 from server.src.models import LogEntry
 from server.src.repositories.log_entries import LogEntryRepository
 from server.src.schemas import LogEntryCreate
@@ -19,7 +19,7 @@ async def test_list_logs_supports_additional_filters(tmp_path) -> None:
     settings = Settings(log_sources=[], unprocessed_log_dir=str(tmp_path))
     app = create_app(settings)
 
-    await init_database()
+    await database.init_database()
     transport = ASGITransport(app=app)
 
     entries = [
@@ -50,7 +50,7 @@ async def test_list_logs_supports_additional_filters(tmp_path) -> None:
     ]
 
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        async with SessionFactory() as session:
+        async with database.SessionFactory() as session:
             await session.execute(delete(LogEntry))
             await session.commit()
 
