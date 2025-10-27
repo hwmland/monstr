@@ -48,6 +48,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url="/api/openapi.json",
     )
 
+    # Expose settings early so request handlers can access configuration even if
+    # startup lifespan hooks are bypassed (e.g. during direct testing scenarios).
+    app.state.settings = settings
+
     if settings.cors_allow_origins:
         app.add_middleware(
             CORSMiddleware,

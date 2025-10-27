@@ -73,7 +73,7 @@ async def test_list_transfers_filters() -> None:
 
 @pytest.mark.asyncio
 async def test_transfer_actuals_aggregates_recent_activity() -> None:
-    app = create_app(Settings(log_sources=[]))
+    app = create_app(Settings(log_sources=[], days_offset=3))
     await database.init_database()
     transport = ASGITransport(app=app)
 

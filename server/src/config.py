@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     log_poll_interval: float = 1.0
     log_sources: List[str] = []
     log_batch_size: int = 32
+    days_offset: int = 0
 
     cleanup_interval_seconds: int = 300
     retention_minutes: int = 1440 * 7 * 4 # 4 weeks in minutes
@@ -44,6 +45,13 @@ class Settings(BaseSettings):
             return [item.strip() for item in cleaned.split(",") if item.strip()]
         if isinstance(value, (tuple, set, list)):
             return [str(item).strip() for item in value if str(item).strip()]
+        return value
+
+    @field_validator("days_offset")
+    @classmethod
+    def _validate_offset(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("days_offset must be non-negative")
         return value
 
     @property
