@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ..api.routes import health, logs, nodes, reputations, transfers
 from ..config import Settings
-from ..database import init_database
+from ..database import configure_database, init_database
 from ..services.cleanup import CleanupService
 from ..services.log_monitor import LogMonitorService
 
@@ -19,11 +19,12 @@ logger = logging.getLogger(__name__)
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Construct the FastAPI application with configured lifespan hooks."""
     settings = settings or Settings()
+    configure_database(settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.settings = settings
-        await init_database()
+        await init_database(settings)
 
         log_monitor = LogMonitorService(settings)
         cleanup_service = CleanupService(settings)

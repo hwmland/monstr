@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from sqlalchemy import JSON, Column, DateTime, Float
+from sqlalchemy import JSON, Column, DateTime, Float, String
 from sqlmodel import Field, SQLModel
 
 
@@ -11,7 +11,14 @@ class LogEntry(SQLModel, table=True):
     """Persisted representation of a parsed log line."""
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    source: str = Field(index=True, description="Configured node name for the log source")
+    source: str = Field(
+        sa_column=Column(
+            String(32),
+            index=True,
+            nullable=False,
+        ),
+        description="Configured node name for the log source",
+    )
     timestamp: datetime = Field(
         sa_column=Column(DateTime(timezone=True), nullable=False, index=True),
         description="Timestamp from the original log entry",
@@ -30,7 +37,14 @@ class Transfer(SQLModel, table=True):
     """Normalized representation of piecestore transfers."""
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    source: str = Field(index=True, description="Configured node name for the log source")
+    source: str = Field(
+        sa_column=Column(
+            String(32),
+            index=True,
+            nullable=False,
+        ),
+        description="Configured node name for the log source",
+    )
     timestamp: datetime = Field(
         sa_column=Column(DateTime(timezone=True), nullable=False, index=True),
         description="Timestamp from the original log entry",
@@ -38,7 +52,10 @@ class Transfer(SQLModel, table=True):
     action: str = Field(description="Transfer action code (DL or UL)")
     is_success: bool = Field(description="True when transfer completed successfully")
     piece_id: str = Field(description="Piece identifier")
-    satellite_id: str = Field(description="Satellite identifier")
+    satellite_id: str = Field(
+        sa_column=Column(String(64), nullable=False),
+        description="Satellite identifier",
+    )
     is_repair: bool = Field(description="True when the transfer is a repair operation")
     size: int = Field(description="Transfer size in bytes")
     offset: Optional[int] = Field(default=None, description="Transfer offset")
@@ -48,8 +65,18 @@ class Transfer(SQLModel, table=True):
 class Reputation(SQLModel, table=True):
     """Latest reputation metrics per source and satellite pair."""
 
-    source: str = Field(primary_key=True, description="Configured node name for the log source")
-    satellite_id: str = Field(primary_key=True, description="Satellite identifier")
+    source: str = Field(
+        sa_column=Column(
+            String(32),
+            primary_key=True,
+            nullable=False,
+        ),
+        description="Configured node name for the log source",
+    )
+    satellite_id: str = Field(
+        sa_column=Column(String(64), primary_key=True, nullable=False),
+        description="Satellite identifier",
+    )
     timestamp: datetime = Field(
         sa_column=Column(DateTime(timezone=True), nullable=False, index=True),
         description="Timestamp associated with the reputation metrics",

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlmodel import SQLModel
 
 from .config import Settings
+from .migrations import run_migrations
 
 settings = Settings()
 engine: AsyncEngine | None = None
@@ -48,4 +49,5 @@ async def init_database(config: Settings | None = None) -> None:
         raise RuntimeError("Database engine is not configured")
 
     async with engine.begin() as connection:
+        await run_migrations(connection)
         await connection.run_sync(SQLModel.metadata.create_all)

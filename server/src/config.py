@@ -79,6 +79,10 @@ class Settings(BaseSettings):
 
             if not node_name:
                 raise ValueError(f"Node specification '{raw}' is missing a node name.")
+            if len(node_name) > 32:
+                raise ValueError(
+                    f"Node specification '{raw}' has a node name longer than 32 characters."
+                )
             if not path_spec:
                 raise ValueError(f"Node specification '{raw}' is missing a log path.")
 

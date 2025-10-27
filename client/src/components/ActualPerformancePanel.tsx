@@ -16,11 +16,49 @@ const formatWindowTime = (value: string | null | undefined): string => {
   return parsed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 };
 
+type RateUnit = "bps" | "Kbps" | "Mbps";
+
+const RATE_UNITS: Array<{ unit: RateUnit; factor: number }> = [
+  { unit: "bps", factor: 1 },
+  { unit: "Kbps", factor: 1_000 },
+  { unit: "Mbps", factor: 1_000_000 },
+];
+
+const pickRatePresentation = (bitRate: number): { value: number; unit: RateUnit } => {
+  const safeRate = Number.isFinite(bitRate) && bitRate > 0 ? bitRate : 0;
+
+  for (const candidate of RATE_UNITS) {
+    const candidateValue = safeRate / candidate.factor;
+    if (candidateValue >= 1 && candidateValue < 1_000) {
+      return { value: candidateValue, unit: candidate.unit };
+    }
+  }
+
+  const largestUnit = RATE_UNITS[RATE_UNITS.length - 1];
+  if (safeRate >= largestUnit.factor) {
+    return { value: safeRate / largestUnit.factor, unit: largestUnit.unit };
+  }
+
+  return { value: safeRate, unit: RATE_UNITS[0].unit };
+};
+
+const formatRateValue = (value: number): string => {
+  if (value === 0) {
+    return "0.00";
+  }
+  if (value >= 100) {
+    return value.toFixed(1);
+  }
+  return value.toFixed(2);
+};
+
 interface MetricView {
   operationsTotal: number;
   operationsSuccess: number;
   successRate: number;
-  rateMbps: number;
+  bitRate: number;
+  rateValue: number;
+  rateUnit: RateUnit;
 }
 
 const buildMetricView = (
@@ -33,9 +71,17 @@ const buildMetricView = (
   const bytesRate = Number.isFinite(rateBytesPerSecond) ? rateBytesPerSecond : 0;
 
   const successRate = total > 0 ? (success / total) * 100 : 0;
-  const rateMbps = (bytesRate * 8) / 1_000_000;
+  const bitRate = bytesRate * 8;
+  const { value: rateValue, unit: rateUnit } = pickRatePresentation(bitRate);
 
-  return { operationsTotal: total, operationsSuccess: success, successRate, rateMbps };
+  return {
+    operationsTotal: total,
+    operationsSuccess: success,
+    successRate,
+    bitRate,
+    rateValue,
+    rateUnit,
+  };
 };
 
 const resolveSuccessColor = (percent: number): string => {
@@ -84,8 +130,8 @@ const ActualPerformancePanel: FC<ActualPerformancePanelProps> = ({
   const hasActivity =
     downloadView.operationsTotal > 0 ||
     uploadView.operationsTotal > 0 ||
-    downloadView.rateMbps > 0 ||
-    uploadView.rateMbps > 0;
+    downloadView.bitRate > 0 ||
+    uploadView.bitRate > 0;
 
   return (
     <section className="panel">
@@ -139,11 +185,15 @@ const ActualPerformancePanel: FC<ActualPerformancePanelProps> = ({
           </article>
           <article className="performance-cell">
             <p className="performance-label">Download Speed</p>
-            <p className="performance-value">{downloadView.rateMbps.toFixed(2)} Mbps</p>
+            <p className="performance-value">
+              {formatRateValue(downloadView.rateValue)} {downloadView.rateUnit}
+            </p>
           </article>
           <article className="performance-cell">
             <p className="performance-label">Upload Speed</p>
-            <p className="performance-value">{uploadView.rateMbps.toFixed(2)} Mbps</p>
+            <p className="performance-value">
+              {formatRateValue(uploadView.rateValue)} {uploadView.rateUnit}
+            </p>
           </article>
         </div>
       </div>

@@ -27,16 +27,42 @@ const formatWindowTime = (value: string | null | undefined): string => {
   return parsed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 };
 
-const bytesToGigabytes = (value: number): number => {
-  if (!Number.isFinite(value) || value <= 0) {
-    return 0;
+type SizeUnit = "B" | "KB" | "MB" | "GB";
+
+const SIZE_UNITS: Array<{ unit: SizeUnit; factor: number }> = [
+  { unit: "B", factor: 1 },
+  { unit: "KB", factor: 1024 },
+  { unit: "MB", factor: 1024 ** 2 },
+  { unit: "GB", factor: 1024 ** 3 },
+];
+
+const pickSizeUnit = (bytes: number): { factor: number; unit: SizeUnit } => {
+  const safeBytes = Number.isFinite(bytes) && bytes > 0 ? bytes : 0;
+
+  for (const candidate of SIZE_UNITS) {
+    const value = safeBytes / candidate.factor;
+    if (value >= 1 && value < 1024) {
+      return { factor: candidate.factor, unit: candidate.unit };
+    }
   }
 
-  const GIB = 1024 ** 3;
-  return value / GIB;
+  const largest = SIZE_UNITS[SIZE_UNITS.length - 1];
+  if (safeBytes >= largest.factor) {
+    return { factor: largest.factor, unit: largest.unit };
+  }
+
+  return { factor: 1, unit: "B" };
 };
 
-const formatGigabytes = (value: number): string => `${value.toFixed(2)} GB`;
+const formatSizedValue = (value: number): string => {
+  if (!Number.isFinite(value) || value === 0) {
+    return "0.0";
+  }
+  if (value >= 100) {
+    return value.toFixed(1);
+  }
+  return value.toFixed(2);
+};
 
 type SatelliteTrafficMode = "size" | "count";
 
@@ -77,14 +103,24 @@ const SatelliteTrafficPanel: FC<SatelliteTrafficPanelProps> = ({
   const windowEnd = formatWindowTime(data?.endTime ?? null);
   const nodesLabel = selectedNodes.length === 0 ? "All nodes" : `Nodes: ${selectedNodes.join(", ")}`;
 
-  const chartData = useMemo<TrafficChartDatum[]>(() => {
-    return (data?.satellites ?? []).map((satellite, index) => {
+  const { chartData, sizeUnit } = useMemo(() => {
+    const satellites = data?.satellites ?? [];
+    const aggregateTotals = satellites.map((satellite) => {
+      const downloadBytes = satellite.download.normal.dataBytes + satellite.download.repair.dataBytes;
+      const uploadBytes = satellite.upload.normal.dataBytes + satellite.upload.repair.dataBytes;
+      return downloadBytes + uploadBytes;
+    });
+
+    const maxBytes = aggregateTotals.length > 0 ? Math.max(...aggregateTotals) : 0;
+    const { factor: sizeFactor, unit } = pickSizeUnit(maxBytes);
+
+    const chartDataMapped = satellites.map((satellite, index) => {
       const satelliteName = satellite.satelliteName || satellite.satelliteId || `Satellite ${index + 1}`;
 
       const toValue = (type: "download" | "upload", category: "normal" | "repair") => {
         const metrics = satellite[type][category];
         if (mode === "size") {
-          return bytesToGigabytes(metrics.dataBytes);
+          return metrics.dataBytes / sizeFactor;
         }
         return metrics.operationsSuccess;
       };
@@ -98,6 +134,8 @@ const SatelliteTrafficPanel: FC<SatelliteTrafficPanelProps> = ({
         uploadRepair: toValue("upload", "repair"),
       } satisfies TrafficChartDatum;
     });
+
+    return { chartData: chartDataMapped, sizeUnit: unit };
   }, [data?.satellites, mode]);
 
   const downloadsEmpty = chartData.every(
@@ -106,8 +144,13 @@ const SatelliteTrafficPanel: FC<SatelliteTrafficPanelProps> = ({
   const uploadsEmpty = chartData.every((item) => item.uploadNormal + item.uploadRepair === 0);
   const hasAnyData = chartData.length > 0 && !(downloadsEmpty && uploadsEmpty);
 
-  const yAxisLabel = mode === "size" ? "GB" : "Success";
-  const formatValue = (value: number) => (mode === "size" ? value.toFixed(1) : value.toFixed(0));
+  const yAxisLabel = mode === "size" ? sizeUnit : "Success";
+  const formatValue = (value: number) => {
+    if (mode === "size") {
+      return formatSizedValue(value);
+    }
+    return value.toFixed(0);
+  };
   const renderStackLabel = (props: LabelRendererProps, text: "DL" | "UL") => {
     const { x = 0, y = 0, width = 0, index = 0 } = props;
     const datum = chartData[index];
@@ -209,7 +252,9 @@ const SatelliteTrafficPanel: FC<SatelliteTrafficPanelProps> = ({
                     };
                     const numericValueRaw = typeof value === "number" ? value : Number(value);
                     const numericValue = Number.isFinite(numericValueRaw) ? numericValueRaw : 0;
-                    const formatted = mode === "size" ? formatGigabytes(numericValue) : `${numericValue.toFixed(0)} ops`;
+                    const formatted = mode === "size"
+                      ? `${formatSizedValue(numericValue)} ${sizeUnit}`
+                      : `${numericValue.toFixed(0)} ops`;
                     return [formatted, labelMap[name] ?? name];
                   }}
                   labelFormatter={(label: string) => `Satellite: ${label}`}
