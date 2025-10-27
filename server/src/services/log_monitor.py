@@ -4,7 +4,9 @@ import asyncio
 import logging
 import json
 import re
+from dataclasses import dataclass
 from datetime import datetime, timezone
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -20,6 +22,52 @@ from ..schemas import LogEntryCreate, ReputationCreate, TransferCreate
 logger = logging.getLogger(__name__)
 
 ALLOWED_LEVELS = {"DEBUG", "INFO", "WARN", "ERROR"}
+
+
+@dataclass(frozen=True)
+class FileSignature:
+    inode: Optional[int]
+    device: Optional[int]
+    size: Optional[int]
+    modified_ns: Optional[int]
+
+    @classmethod
+    def from_stat(cls, stat_result: os.stat_result | None) -> "FileSignature":
+        if stat_result is None:
+            return cls(None, None, None, None)
+
+        inode = getattr(stat_result, "st_ino", None)
+        if inode == 0:
+            inode = None
+        device = getattr(stat_result, "st_dev", None)
+        size = getattr(stat_result, "st_size", None)
+        modified_ns = getattr(stat_result, "st_mtime_ns", None)
+        return cls(inode, device, size, modified_ns)
+
+    def differs_from(self, other: "FileSignature") -> bool:
+        inode_differs = (
+            self.inode is not None
+            and other.inode is not None
+            and self.inode != other.inode
+        )
+        device_differs = (
+            self.device is not None
+            and other.device is not None
+            and self.device != other.device
+        )
+        if inode_differs or device_differs:
+            return True
+
+        if (
+            self.modified_ns is not None
+            and other.modified_ns is not None
+            and self.modified_ns > other.modified_ns
+            and self.size == other.size == 0
+        ):
+            # Fallback heuristic: file recreated and truncated.
+            return True
+
+        return False
 
 
 class LogMonitorService:
@@ -71,6 +119,7 @@ class LogMonitorService:
             try:
                 async with aiofiles.open(path, mode="r") as handle:
                     logger.info("Opened log file for node '%s': %s", node_name, path)
+                    handle_signature = await self._get_handle_signature(handle)
                     await handle.seek(0, 2)  # jump to end of file
 
                     while not self._stopping.is_set():
@@ -128,6 +177,19 @@ class LogMonitorService:
                                     reputation_buffer,
                                     node_name=node_name,
                                 )
+
+                            should_reopen, handle_signature = await self._should_reopen_file(
+                                handle,
+                                path,
+                                handle_signature,
+                            )
+                            if should_reopen:
+                                logger.info(
+                                    "Detected rotation or truncation for log %s (node %s); reopening",
+                                    path,
+                                    node_name,
+                                )
+                                break
                             try:
                                 await asyncio.wait_for(
                                     self._stopping.wait(),
@@ -153,6 +215,60 @@ class LogMonitorService:
                 reputation_buffer,
                 node_name=node_name,
             )
+
+    async def _get_loop(self) -> asyncio.AbstractEventLoop:
+        try:
+            return asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.get_event_loop()
+
+    async def _stat_path(self, path: Path) -> os.stat_result | None:
+        loop = await self._get_loop()
+        try:
+            return await loop.run_in_executor(None, path.stat)
+        except FileNotFoundError:
+            return None
+
+    async def _stat_fd(self, handle: aiofiles.threadpool.text.AsyncTextIOWrapper) -> os.stat_result | None:
+        try:
+            fileno = handle.fileno()
+        except (AttributeError, OSError, ValueError):
+            return None
+
+        loop = await self._get_loop()
+        try:
+            return await loop.run_in_executor(None, os.fstat, fileno)
+        except OSError:
+            return None
+
+    async def _get_handle_signature(
+        self, handle: aiofiles.threadpool.text.AsyncTextIOWrapper
+    ) -> FileSignature:
+        fd_stat = await self._stat_fd(handle)
+        return FileSignature.from_stat(fd_stat)
+
+    async def _should_reopen_file(
+        self,
+        handle: aiofiles.threadpool.text.AsyncTextIOWrapper,
+        path: Path,
+        original_signature: FileSignature,
+    ) -> tuple[bool, FileSignature]:
+        current_fd_stat = await self._stat_fd(handle)
+        current_fd_signature = FileSignature.from_stat(current_fd_stat)
+        if original_signature.differs_from(current_fd_signature):
+            return True, current_fd_signature
+
+        path_stat = await self._stat_path(path)
+        path_signature = FileSignature.from_stat(path_stat)
+        if current_fd_signature.differs_from(path_signature):
+            return True, current_fd_signature
+
+        if current_fd_signature.size is not None:
+            position = await handle.tell()
+            if position > current_fd_signature.size:
+                return True, current_fd_signature
+
+        return False, current_fd_signature
 
     async def _flush_buffers(
         self,
