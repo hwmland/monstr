@@ -67,6 +67,22 @@ const NodesPanel: FC = () => {
           <label className="panel-picker__item">
             <input
               type="checkbox"
+              checked={panels.satelliteTraffic ?? true}
+              onChange={() => togglePanel("satelliteTraffic")}
+            />
+            <span>Satellite Traffic</span>
+          </label>
+          <label className="panel-picker__item">
+            <input
+              type="checkbox"
+              checked={panels.actualPerformance ?? true}
+              onChange={() => togglePanel("actualPerformance")}
+            />
+            <span>Actual Performance</span>
+          </label>
+          <label className="panel-picker__item">
+            <input
+              type="checkbox"
               checked={panels.reputations ?? true}
               onChange={() => togglePanel("reputations")}
             />

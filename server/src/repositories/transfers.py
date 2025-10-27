@@ -43,6 +43,19 @@ class TransferRepository:
         result = await self._session.execute(stmt)
         return tuple(result.scalars())
 
+    async def list_for_sources_between(
+        self,
+        sources: Sequence[str] | None,
+        start: datetime,
+        end: datetime,
+    ) -> Sequence[Transfer]:
+        stmt = select(Transfer).where(Transfer.timestamp >= start, Transfer.timestamp <= end)
+        if sources:
+            stmt = stmt.where(Transfer.source.in_(tuple(sources)))
+
+        result = await self._session.execute(stmt)
+        return tuple(result.scalars())
+
     async def delete_older_than(self, cutoff: datetime) -> int:
         stmt = delete(Transfer).where(Transfer.timestamp < cutoff)
         result = await self._session.execute(stmt)

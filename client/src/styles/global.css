@@ -74,10 +74,65 @@ a {
   transform: none;
 }
 
+.button-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.button-group--micro {
+  gap: 0.3rem;
+}
+
+.panel__actions--stacked {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+}
+
+.button--mini {
+  padding: 0.2rem 0.55rem;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+.button--mini-active {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.7);
+}
+
+.button--micro {
+  padding: 0.15rem 0.4rem;
+  border-radius: 8px;
+  font-size: 0.65rem;
+  text-transform: none;
+  letter-spacing: 0.015em;
+}
+
+.button--micro-active {
+  background: rgba(56, 189, 248, 0.24);
+  border-color: rgba(56, 189, 248, 0.75);
+  color: var(--color-text);
+}
+
 .page {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+.transfer-panels {
+  display: grid;
+  gap: 0.75rem;
+}
+
+@media (min-width: 900px) {
+  .transfer-panels {
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    align-items: stretch;
+  }
 }
 
 .panel {
@@ -278,6 +333,62 @@ a {
 
 .reputation-table td {
   color: var(--color-text-muted);
+}
+
+.performance-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.performance-cell {
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  text-align: center;
+  min-height: 140px;
+}
+
+.performance-cell--top {
+  background: linear-gradient(160deg, rgba(99, 102, 241, 0.12), rgba(15, 23, 42, 0.92));
+}
+
+.performance-label {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.performance-value {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.performance-subvalue {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 640px) {
+  .performance-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.traffic-chart {
+  width: 100%;
+  height: 320px;
 }
 
 @media (max-width: 640px) {

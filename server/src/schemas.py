@@ -138,6 +138,44 @@ class TransferFilters(BaseModel):
     limit: int = Field(default=100, ge=1, le=1000)
 
 
+class TransferActualRequest(BaseModel):
+    nodes: list[str] = Field(default_factory=list, description="Nodes to include in the aggregation")
+
+
+class TransferActualMetrics(BaseModel):
+    operations_total: int = Field(alias="operationsTotal", default=0)
+    operations_success: int = Field(alias="operationsSuccess", default=0)
+    data_bytes: int = Field(alias="dataBytes", default=0)
+    rate: float = 0.0
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class TransferActualCategoryMetrics(BaseModel):
+    normal: TransferActualMetrics
+    repair: TransferActualMetrics
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class TransferActualSatelliteMetrics(BaseModel):
+    satellite_id: str = Field(alias="satelliteId")
+    download: TransferActualCategoryMetrics
+    upload: TransferActualCategoryMetrics
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class TransferActualResponse(BaseModel):
+    start_time: datetime = Field(alias="startTime")
+    end_time: datetime = Field(alias="endTime")
+    download: TransferActualCategoryMetrics
+    upload: TransferActualCategoryMetrics
+    satellites: list[TransferActualSatelliteMetrics] = Field(default_factory=list)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class NodeConfig(BaseModel):
     name: str = Field(..., description="Node identifier configured in settings")
     path: str = Field(..., description="Absolute path to the node log file")

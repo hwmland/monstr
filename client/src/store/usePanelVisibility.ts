@@ -21,6 +21,12 @@ interface PanelVisibilityState {
   isVisible: (panelId: string) => boolean;
 }
 
+const DEFAULT_PANELS: Record<string, boolean> = {
+  reputations: true,
+  actualPerformance: true,
+  satelliteTraffic: true,
+};
+
 const usePanelVisibilityStore = create<PanelVisibilityState>((set, get) => ({
   panels: (() => {
     if (typeof window !== "undefined") {
@@ -28,15 +34,13 @@ const usePanelVisibilityStore = create<PanelVisibilityState>((set, get) => ({
         const raw = window.localStorage.getItem(PANEL_VISIBILITY_STORAGE_KEY);
         if (raw) {
           const parsed = JSON.parse(raw) as Record<string, boolean>;
-          return { reputations: true, ...parsed };
+          return { ...DEFAULT_PANELS, ...parsed };
         }
       } catch (error) {
         console.warn("Failed to parse panel visibility from storage", error);
       }
     }
-    return {
-      reputations: true,
-    };
+    return { ...DEFAULT_PANELS };
   })(),
   togglePanel: (panelId: string) => {
     const panels = get().panels;
