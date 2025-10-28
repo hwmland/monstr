@@ -13,56 +13,8 @@ import {
 } from "recharts";
 
 import type { TransferActualData } from "../types";
-
-const formatWindowTime = (value: string | null | undefined): string => {
-  if (!value) {
-    return "—";
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return "—";
-  }
-
-  return parsed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-};
-
-type SizeUnit = "B" | "KB" | "MB" | "GB";
-
-const SIZE_UNITS: Array<{ unit: SizeUnit; factor: number }> = [
-  { unit: "B", factor: 1 },
-  { unit: "KB", factor: 1024 },
-  { unit: "MB", factor: 1024 ** 2 },
-  { unit: "GB", factor: 1024 ** 3 },
-];
-
-const pickSizeUnit = (bytes: number): { factor: number; unit: SizeUnit } => {
-  const safeBytes = Number.isFinite(bytes) && bytes > 0 ? bytes : 0;
-
-  for (const candidate of SIZE_UNITS) {
-    const value = safeBytes / candidate.factor;
-    if (value >= 1 && value < 1024) {
-      return { factor: candidate.factor, unit: candidate.unit };
-    }
-  }
-
-  const largest = SIZE_UNITS[SIZE_UNITS.length - 1];
-  if (safeBytes >= largest.factor) {
-    return { factor: largest.factor, unit: largest.unit };
-  }
-
-  return { factor: 1, unit: "B" };
-};
-
-const formatSizedValue = (value: number): string => {
-  if (!Number.isFinite(value) || value === 0) {
-    return "0.0";
-  }
-  if (value >= 100) {
-    return value.toFixed(1);
-  }
-  return value.toFixed(2);
-};
+import { formatWindowTime } from "../utils/time";
+import { formatSizeValue, pickSizeUnit } from "../utils/units";
 
 type SatelliteTrafficMode = "size" | "count";
 
@@ -112,7 +64,7 @@ const SatelliteTrafficPanel: FC<SatelliteTrafficPanelProps> = ({
     });
 
     const maxBytes = aggregateTotals.length > 0 ? Math.max(...aggregateTotals) : 0;
-    const { factor: sizeFactor, unit } = pickSizeUnit(maxBytes);
+  const { factor: sizeFactor, unit } = pickSizeUnit(maxBytes);
 
     const chartDataMapped = satellites.map((satellite, index) => {
       const satelliteName = satellite.satelliteName || satellite.satelliteId || `Satellite ${index + 1}`;
@@ -147,7 +99,7 @@ const SatelliteTrafficPanel: FC<SatelliteTrafficPanelProps> = ({
   const yAxisLabel = mode === "size" ? sizeUnit : "Success";
   const formatValue = (value: number) => {
     if (mode === "size") {
-      return formatSizedValue(value);
+      return formatSizeValue(value);
     }
     return value.toFixed(0);
   };
@@ -253,7 +205,7 @@ const SatelliteTrafficPanel: FC<SatelliteTrafficPanelProps> = ({
                     const numericValueRaw = typeof value === "number" ? value : Number(value);
                     const numericValue = Number.isFinite(numericValueRaw) ? numericValueRaw : 0;
                     const formatted = mode === "size"
-                      ? `${formatSizedValue(numericValue)} ${sizeUnit}`
+                      ? `${formatSizeValue(numericValue)} ${sizeUnit}`
                       : `${numericValue.toFixed(0)} ops`;
                     return [formatted, labelMap[name] ?? name];
                   }}
@@ -270,12 +222,32 @@ const SatelliteTrafficPanel: FC<SatelliteTrafficPanelProps> = ({
                     return legendMap[value] ?? value;
                   }}
                 />
-                <Bar dataKey="downloadNormal" stackId="download" fill="rgba(56, 189, 248, 0.85)" />
-                <Bar dataKey="downloadRepair" stackId="download" fill="rgba(248, 113, 113, 0.85)">
+                <Bar
+                  dataKey="downloadNormal"
+                  stackId="download"
+                  fill="rgba(56, 189, 248, 0.85)"
+                  isAnimationActive={false}
+                />
+                <Bar
+                  dataKey="downloadRepair"
+                  stackId="download"
+                  fill="rgba(248, 113, 113, 0.85)"
+                  isAnimationActive={false}
+                >
                   <LabelList position="top" content={renderDownloadLabel} />
                 </Bar>
-                <Bar dataKey="uploadNormal" stackId="upload" fill="rgba(52, 211, 153, 0.85)" />
-                <Bar dataKey="uploadRepair" stackId="upload" fill="rgba(249, 115, 22, 0.85)">
+                <Bar
+                  dataKey="uploadNormal"
+                  stackId="upload"
+                  fill="rgba(52, 211, 153, 0.85)"
+                  isAnimationActive={false}
+                />
+                <Bar
+                  dataKey="uploadRepair"
+                  stackId="upload"
+                  fill="rgba(249, 115, 22, 0.85)"
+                  isAnimationActive={false}
+                >
                   <LabelList position="top" content={renderUploadLabel} />
                 </Bar>
               </BarChart>

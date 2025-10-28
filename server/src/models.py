@@ -92,3 +92,45 @@ class Reputation(SQLModel, table=True):
     score_suspension: float = Field(
         sa_column=Column(Float, nullable=False), description="Suspension score reported by Storj"
     )
+
+
+class TransportGrouped(SQLModel, table=True):
+    """Aggregated transfer metrics grouped by interval, satellite, and size class."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    source: str = Field(
+        sa_column=Column(String(32), index=True, nullable=False),
+        description="Configured node name for the log source",
+    )
+    satellite_id: str = Field(
+        sa_column=Column(String(64), nullable=False),
+        description="Satellite identifier",
+    )
+    interval_start: datetime = Field(
+        sa_column=Column(DateTime(timezone=True), nullable=False, index=True),
+        description="Inclusive interval start",
+    )
+    interval_end: datetime = Field(
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+        description="Exclusive interval end",
+    )
+    size_class: str = Field(
+        sa_column=Column(String(8), nullable=False),
+        description="Payload size class (e.g. 1K, 4K, 256K)",
+    )
+    size_dl_succ_nor: int = Field(default=0, description="Bytes for successful normal downloads")
+    size_ul_succ_nor: int = Field(default=0, description="Bytes for successful normal uploads")
+    size_dl_fail_nor: int = Field(default=0, description="Bytes for failed normal downloads")
+    size_ul_fail_nor: int = Field(default=0, description="Bytes for failed normal uploads")
+    size_dl_succ_rep: int = Field(default=0, description="Bytes for successful repair downloads")
+    size_ul_succ_rep: int = Field(default=0, description="Bytes for successful repair uploads")
+    size_dl_fail_rep: int = Field(default=0, description="Bytes for failed repair downloads")
+    size_ul_fail_rep: int = Field(default=0, description="Bytes for failed repair uploads")
+    count_dl_succ_nor: int = Field(default=0, description="Successful normal download count")
+    count_ul_succ_nor: int = Field(default=0, description="Successful normal upload count")
+    count_dl_fail_nor: int = Field(default=0, description="Failed normal download count")
+    count_ul_fail_nor: int = Field(default=0, description="Failed normal upload count")
+    count_dl_succ_rep: int = Field(default=0, description="Successful repair download count")
+    count_ul_succ_rep: int = Field(default=0, description="Successful repair upload count")
+    count_dl_fail_rep: int = Field(default=0, description="Failed repair download count")
+    count_ul_fail_rep: int = Field(default=0, description="Failed repair upload count")

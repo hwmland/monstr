@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Sequence
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...config import Settings
+from ...core.time import getVirtualNow
 from ...database import get_session
 from ...repositories.transfers import TransferRepository
 from ...schemas import (
@@ -43,10 +44,9 @@ async def get_transfer_actuals(
     """Aggregate transfer activity for the past hour for the requested nodes."""
     repository = TransferRepository(session)
 
-    settings: Settings = getattr(request.app.state, "settings", Settings())
-    offset_days = getattr(settings, "days_offset", 0)
+    settings: Settings = getattr(request.app.state, "settings")
 
-    end_time = datetime.now(timezone.utc) - timedelta(days=offset_days)
+    end_time = getVirtualNow(settings)
     start_time = end_time - timedelta(hours=1)
 
     nodes = sorted({node for node in payload.nodes if node})

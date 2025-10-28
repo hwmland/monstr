@@ -176,6 +176,70 @@ class TransferActualResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class TransportGroupedCreate(BaseModel):
+    source: str
+    satellite_id: str = Field(serialization_alias="satelliteId", validation_alias="satelliteId")
+    interval_start: datetime = Field(serialization_alias="intervalStart", validation_alias="intervalStart")
+    interval_end: datetime = Field(serialization_alias="intervalEnd", validation_alias="intervalEnd")
+    size_class: str = Field(serialization_alias="sizeClass", validation_alias="sizeClass")
+    size_dl_succ_nor: int = Field(default=0, serialization_alias="sizeDlSuccNor", validation_alias="sizeDlSuccNor")
+    size_ul_succ_nor: int = Field(default=0, serialization_alias="sizeUlSuccNor", validation_alias="sizeUlSuccNor")
+    size_dl_fail_nor: int = Field(default=0, serialization_alias="sizeDlFailNor", validation_alias="sizeDlFailNor")
+    size_ul_fail_nor: int = Field(default=0, serialization_alias="sizeUlFailNor", validation_alias="sizeUlFailNor")
+    size_dl_succ_rep: int = Field(default=0, serialization_alias="sizeDlSuccRep", validation_alias="sizeDlSuccRep")
+    size_ul_succ_rep: int = Field(default=0, serialization_alias="sizeUlSuccRep", validation_alias="sizeUlSuccRep")
+    size_dl_fail_rep: int = Field(default=0, serialization_alias="sizeDlFailRep", validation_alias="sizeDlFailRep")
+    size_ul_fail_rep: int = Field(default=0, serialization_alias="sizeUlFailRep", validation_alias="sizeUlFailRep")
+    count_dl_succ_nor: int = Field(default=0, serialization_alias="countDlSuccNor", validation_alias="countDlSuccNor")
+    count_ul_succ_nor: int = Field(default=0, serialization_alias="countUlSuccNor", validation_alias="countUlSuccNor")
+    count_dl_fail_nor: int = Field(default=0, serialization_alias="countDlFailNor", validation_alias="countDlFailNor")
+    count_ul_fail_nor: int = Field(default=0, serialization_alias="countUlFailNor", validation_alias="countUlFailNor")
+    count_dl_succ_rep: int = Field(default=0, serialization_alias="countDlSuccRep", validation_alias="countDlSuccRep")
+    count_ul_succ_rep: int = Field(default=0, serialization_alias="countUlSuccRep", validation_alias="countUlSuccRep")
+    count_dl_fail_rep: int = Field(default=0, serialization_alias="countDlFailRep", validation_alias="countDlFailRep")
+    count_ul_fail_rep: int = Field(default=0, serialization_alias="countUlFailRep", validation_alias="countUlFailRep")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class TransportGroupedRead(BaseModel):
+    id: int
+    source: str
+    satellite_id: str = Field(serialization_alias="satelliteId")
+    interval_start: datetime = Field(serialization_alias="intervalStart")
+    interval_end: datetime = Field(serialization_alias="intervalEnd")
+    size_class: str = Field(serialization_alias="sizeClass")
+    size_dl_succ_nor: int = Field(serialization_alias="sizeDlSuccNor")
+    size_ul_succ_nor: int = Field(serialization_alias="sizeUlSuccNor")
+    size_dl_fail_nor: int = Field(serialization_alias="sizeDlFailNor")
+    size_ul_fail_nor: int = Field(serialization_alias="sizeUlFailNor")
+    size_dl_succ_rep: int = Field(serialization_alias="sizeDlSuccRep")
+    size_ul_succ_rep: int = Field(serialization_alias="sizeUlSuccRep")
+    size_dl_fail_rep: int = Field(serialization_alias="sizeDlFailRep")
+    size_ul_fail_rep: int = Field(serialization_alias="sizeUlFailRep")
+    count_dl_succ_nor: int = Field(serialization_alias="countDlSuccNor")
+    count_ul_succ_nor: int = Field(serialization_alias="countUlSuccNor")
+    count_dl_fail_nor: int = Field(serialization_alias="countDlFailNor")
+    count_ul_fail_nor: int = Field(serialization_alias="countUlFailNor")
+    count_dl_succ_rep: int = Field(serialization_alias="countDlSuccRep")
+    count_ul_succ_rep: int = Field(serialization_alias="countUlSuccRep")
+    count_dl_fail_rep: int = Field(serialization_alias="countDlFailRep")
+    count_ul_fail_rep: int = Field(serialization_alias="countUlFailRep")
+
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+
+
+class TransportGroupedFilters(BaseModel):
+    source: Optional[str] = None
+    satellite_id: Optional[str] = Field(default=None, serialization_alias="satelliteId", validation_alias="satelliteId")
+    size_class: Optional[str] = Field(default=None, serialization_alias="sizeClass", validation_alias="sizeClass")
+    interval_start_from: Optional[datetime] = Field(default=None, serialization_alias="intervalStartFrom", validation_alias="intervalStartFrom")
+    interval_start_to: Optional[datetime] = Field(default=None, serialization_alias="intervalStartTo", validation_alias="intervalStartTo")
+    limit: int = Field(default=100, ge=1, le=1000)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class NodeConfig(BaseModel):
     name: str = Field(..., description="Node identifier configured in settings")
     path: str = Field(..., description="Absolute path to the node log file")

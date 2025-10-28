@@ -380,6 +380,13 @@ a {
   color: var(--color-text-muted);
 }
 
+.performance-data-value {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
 @media (max-width: 640px) {
   .performance-grid {
     grid-template-columns: 1fr;

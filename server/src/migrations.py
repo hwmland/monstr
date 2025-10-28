@@ -100,6 +100,8 @@ def _migrate_0_to_1(conn: Connection) -> None:
         (models.Reputation.__table__, {"source": 32, "satellite_id": 64}),
     ):
         _rebuild_table_with_capped_columns(conn, table, capped_columns)
+    logger.info("Ensuring transport_grouped table exists")
+    models.TransportGrouped.__table__.create(conn, checkfirst=True)
     logger.info("Completed migration 0 -> 1")
 
 

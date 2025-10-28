@@ -3,11 +3,12 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Optional
 
 from .. import database
 from ..config import Settings
+from ..core.time import getVirtualNow
 from ..repositories.log_entries import LogEntryRepository
 from ..repositories.transfers import TransferRepository
 
@@ -38,7 +39,7 @@ class CleanupService:
 
     async def _run(self) -> None:
         while not self._stop_event.is_set():
-            cutoff = datetime.now(timezone.utc) - timedelta(minutes=self._settings.retention_minutes)
+            cutoff = getVirtualNow(self._settings) - timedelta(minutes=self._settings.retention_minutes)
             try:
                 async with database.SessionFactory() as session:
                     log_repository = LogEntryRepository(session)

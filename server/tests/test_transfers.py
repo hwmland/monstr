@@ -8,6 +8,7 @@ from sqlalchemy import delete
 
 from server.src.config import Settings
 from server.src.core.app import create_app
+from server.src.core.time import getVirtualNow
 from server.src import database
 from server.src.models import Transfer
 from server.src.repositories.transfers import TransferRepository
@@ -73,13 +74,14 @@ async def test_list_transfers_filters() -> None:
 
 @pytest.mark.asyncio
 async def test_transfer_actuals_aggregates_recent_activity() -> None:
-    app = create_app(Settings(log_sources=[], days_offset=3))
+    app_settings = Settings(log_sources=[], days_offset=3)
+    app = create_app(app_settings)
     await database.init_database()
     transport = ASGITransport(app=app)
 
-    now = datetime.now(timezone.utc)
-    within_window = now - timedelta(days=3, minutes=10)
-    outside_window = now - timedelta(days=3, hours=2)
+    virtual_now = getVirtualNow(app_settings)
+    within_window = virtual_now - timedelta(minutes=10)
+    outside_window = virtual_now - timedelta(hours=2)
 
     entries = [
         TransferCreate(

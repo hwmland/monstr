@@ -2,55 +2,14 @@ import type { FC } from "react";
 
 import { COLOR_STATUS_GREEN, COLOR_STATUS_RED, COLOR_STATUS_YELLOW } from "../constants/colors";
 import type { TransferActualAggregated } from "../types";
-
-const formatWindowTime = (value: string | null | undefined): string => {
-  if (!value) {
-    return "—";
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return "—";
-  }
-
-  return parsed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-};
-
-type RateUnit = "bps" | "Kbps" | "Mbps";
-
-const RATE_UNITS: Array<{ unit: RateUnit; factor: number }> = [
-  { unit: "bps", factor: 1 },
-  { unit: "Kbps", factor: 1_000 },
-  { unit: "Mbps", factor: 1_000_000 },
-];
-
-const pickRatePresentation = (bitRate: number): { value: number; unit: RateUnit } => {
-  const safeRate = Number.isFinite(bitRate) && bitRate > 0 ? bitRate : 0;
-
-  for (const candidate of RATE_UNITS) {
-    const candidateValue = safeRate / candidate.factor;
-    if (candidateValue >= 1 && candidateValue < 1_000) {
-      return { value: candidateValue, unit: candidate.unit };
-    }
-  }
-
-  const largestUnit = RATE_UNITS[RATE_UNITS.length - 1];
-  if (safeRate >= largestUnit.factor) {
-    return { value: safeRate / largestUnit.factor, unit: largestUnit.unit };
-  }
-
-  return { value: safeRate, unit: RATE_UNITS[0].unit };
-};
-
-const formatRateValue = (value: number): string => {
-  if (value === 0) {
-    return "0.00";
-  }
-  if (value >= 100) {
-    return value.toFixed(1);
-  }
-  return value.toFixed(2);
-};
+import { formatWindowTime } from "../utils/time";
+import {
+  formatRateValue,
+  formatSizeValue,
+  pickRatePresentation,
+  pickSizePresentation,
+} from "../utils/units";
+import type { RateUnit, SizeUnit } from "../utils/units";
 
 interface MetricView {
   operationsTotal: number;
@@ -59,20 +18,26 @@ interface MetricView {
   bitRate: number;
   rateValue: number;
   rateUnit: RateUnit;
+  dataBytes: number;
+  sizeValue: number;
+  sizeUnit: SizeUnit;
 }
 
 const buildMetricView = (
   operationsTotal: number,
   operationsSuccess: number,
   rateBytesPerSecond: number,
+  dataBytes: number,
 ): MetricView => {
   const total = Number.isFinite(operationsTotal) ? operationsTotal : 0;
   const success = Number.isFinite(operationsSuccess) ? operationsSuccess : 0;
   const bytesRate = Number.isFinite(rateBytesPerSecond) ? rateBytesPerSecond : 0;
+  const bytesTotal = Number.isFinite(dataBytes) ? dataBytes : 0;
 
   const successRate = total > 0 ? (success / total) * 100 : 0;
   const bitRate = bytesRate * 8;
   const { value: rateValue, unit: rateUnit } = pickRatePresentation(bitRate);
+  const { value: sizeValue, unit: sizeUnit } = pickSizePresentation(bytesTotal);
 
   return {
     operationsTotal: total,
@@ -81,6 +46,9 @@ const buildMetricView = (
     bitRate,
     rateValue,
     rateUnit,
+    dataBytes: bytesTotal,
+    sizeValue,
+    sizeUnit,
   };
 };
 
@@ -119,12 +87,14 @@ const ActualPerformancePanel: FC<ActualPerformancePanelProps> = ({
     aggregated?.download.operationsTotal ?? 0,
     aggregated?.download.operationsSuccess ?? 0,
     aggregated?.download.rate ?? 0,
+    aggregated?.download.dataBytes ?? 0,
   );
 
   const uploadView = buildMetricView(
     aggregated?.upload.operationsTotal ?? 0,
     aggregated?.upload.operationsSuccess ?? 0,
     aggregated?.upload.rate ?? 0,
+    aggregated?.upload.dataBytes ?? 0,
   );
 
   const hasActivity =
@@ -170,6 +140,9 @@ const ActualPerformancePanel: FC<ActualPerformancePanelProps> = ({
             <p className="performance-subvalue">
               {downloadView.operationsSuccess} / {downloadView.operationsTotal}
             </p>
+            <p className="performance-data-value">
+              Data: {formatSizeValue(downloadView.sizeValue)} {downloadView.sizeUnit}
+            </p>
           </article>
           <article className="performance-cell performance-cell--top">
             <p className="performance-label">Upload Success</p>
@@ -181,6 +154,9 @@ const ActualPerformancePanel: FC<ActualPerformancePanelProps> = ({
             </p>
             <p className="performance-subvalue">
               {uploadView.operationsSuccess} / {uploadView.operationsTotal}
+            </p>
+            <p className="performance-data-value">
+              Data: {formatSizeValue(uploadView.sizeValue)} {uploadView.sizeUnit}
             </p>
           </article>
           <article className="performance-cell">
