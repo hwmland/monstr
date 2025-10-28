@@ -25,6 +25,13 @@ def parse_args() -> argparse.Namespace:
         default=[],
         help="Monitor a node specified as NAME:PATH to its log file. Repeat for multiple nodes.",
     )
+    parser.add_argument(
+        "--remote",
+        dest="remotes",
+        action="append",
+        default=[],
+        help="Monitor a remote node specified as NAME:HOST:PORT for TCP log streaming. Repeat for multiple remotes.",
+    )
     parser.add_argument("--host", dest="host", help="API host binding override")
     parser.add_argument("--port", dest="port", type=int, help="API port binding override")
     parser.add_argument(
@@ -45,6 +52,8 @@ def build_settings(args: argparse.Namespace) -> Settings:
 
     if getattr(args, "nodes", None):
         overrides["log_sources"] = args.nodes
+    if getattr(args, "remotes", None):
+        overrides["remote_sources"] = args.remotes
     if args.host:
         overrides["api_host"] = args.host
     if args.port:
@@ -85,10 +94,11 @@ def main() -> None:
     logging.config.dictConfig(log_config)
 
     logger.info(
-    "Starting API on %s:%s monitoring %d node(s)",
+        "Starting API on %s:%s monitoring %d file node(s) and %d remote node(s)",
         settings.api_host,
         settings.api_port,
         len(settings.log_sources),
+        len(getattr(settings, "remote_sources", [])),
     )
 
     app = create_app(settings)

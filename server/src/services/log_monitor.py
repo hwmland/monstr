@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import logging
+import contextlib
 import json
+import logging
+import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -81,24 +82,33 @@ class LogMonitorService:
         self._unprocessed_prefix = "unprocessed"
 
     async def start(self) -> None:
-        if not self._settings.log_sources:
+        if not self._settings.log_sources and not self._settings.remote_sources:
             logger.warning("Log monitoring started without any nodes configured.")
             return
 
         try:
-            nodes = self._settings.parsed_log_sources
+            file_nodes = self._settings.parsed_log_sources
+            remote_nodes = self._settings.parsed_remote_sources
         except ValueError as exc:
             logger.error("Failed to parse node configuration: %s", exc)
             return
 
-        if not nodes:
-            logger.warning("No valid log nodes resolved from configuration.")
+        if not file_nodes and not remote_nodes:
+            logger.warning("No valid log or remote nodes resolved from configuration.")
             return
 
-        for node_name, path in nodes:
-            logger.info("Starting watcher for node '%s' at %s", node_name, path)
+        for node_name, path in file_nodes:
+            logger.info("Starting file watcher for node '%s' at %s", node_name, path)
             task = asyncio.create_task(
                 self._watch_file(node_name, path), name=f"log-watch:{node_name}"
+            )
+            self._tasks.append(task)
+
+        for node_name, host, port in remote_nodes:
+            logger.info("Starting remote watcher for node '%s' at %s:%d", node_name, host, port)
+            task = asyncio.create_task(
+                self._watch_remote(node_name, host, port),
+                name=f"remote-watch:{node_name}",
             )
             self._tasks.append(task)
 
@@ -125,50 +135,14 @@ class LogMonitorService:
                     while not self._stopping.is_set():
                         line = await handle.readline()
                         if line:
-                            (
-                                processed_entries,
-                                transfer_entries,
-                                reputation_entries,
-                                is_unprocessed,
-                            ) = await self._process_line(node_name, line)
-                            entry_count = len(processed_entries) if processed_entries else 0
-                            logger.debug(
-                                (
-                                    "Parsed log line; node=%s unprocessed=%s log_entries=%d transfers=%d "
-                                    "source_path=%s"
-                                ),
+                            await self._handle_stream_line(
                                 node_name,
-                                is_unprocessed,
-                                entry_count,
-                                len(transfer_entries),
-                                path,
+                                line,
+                                log_buffer,
+                                transfer_buffer,
+                                reputation_buffer,
+                                source_hint=str(path),
                             )
-
-                            if is_unprocessed:
-                                await self._record_unprocessed(node_name, line)
-                                continue
-
-                            if processed_entries is None:
-                                continue  # handled intentionally (e.g. ignored by filters)
-
-                            if processed_entries:
-                                log_buffer.extend(processed_entries)
-                            if transfer_entries:
-                                transfer_buffer.extend(transfer_entries)
-                            if reputation_entries:
-                                reputation_buffer.extend(reputation_entries)
-
-                            if (
-                                len(log_buffer) >= self._settings.log_batch_size
-                                or len(transfer_buffer) >= self._settings.log_batch_size
-                                or len(reputation_buffer) >= self._settings.log_batch_size
-                            ):
-                                await self._flush_buffers(
-                                    log_buffer,
-                                    transfer_buffer,
-                                    reputation_buffer,
-                                    node_name=node_name,
-                                )
                         else:
                             if log_buffer or transfer_buffer or reputation_buffer:
                                 await self._flush_buffers(
@@ -215,6 +189,80 @@ class LogMonitorService:
                 reputation_buffer,
                 node_name=node_name,
             )
+
+    async def _watch_remote(self, node_name: str, host: str, port: int) -> None:
+        log_buffer: List[LogEntryCreate] = []
+        transfer_buffer: List[TransferCreate] = []
+        reputation_buffer: List[ReputationCreate] = []
+
+        while not self._stopping.is_set():
+            reader: asyncio.StreamReader | None = None
+            writer: asyncio.StreamWriter | None = None
+            try:
+                reader, writer = await asyncio.open_connection(host, port)
+                logger.info(
+                    "Connected to remote node '%s' at %s:%d",
+                    node_name,
+                    host,
+                    port,
+                )
+
+                while not self._stopping.is_set():
+                    line_bytes = await reader.readline()
+                    if not line_bytes:
+                        logger.warning(
+                            "Remote node '%s' at %s:%d closed the stream",
+                            node_name,
+                            host,
+                            port,
+                        )
+                        break
+
+                    line = line_bytes.decode("utf-8", errors="replace")
+                    await self._handle_stream_line(
+                        node_name,
+                        line,
+                        log_buffer,
+                        transfer_buffer,
+                        reputation_buffer,
+                        source_hint=f"{host}:{port}",
+                    )
+
+            except asyncio.CancelledError:
+                raise
+            except (ConnectionError, OSError) as exc:
+                logger.warning(
+                    "Unable to connect to remote node '%s' at %s:%d (%s)",
+                    node_name,
+                    host,
+                    port,
+                    exc,
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "Unexpected error while monitoring remote node '%s' at %s:%d",
+                    node_name,
+                    host,
+                    port,
+                )
+            finally:
+                if writer is not None:
+                    writer.close()
+                    with contextlib.suppress(Exception):
+                        await writer.wait_closed()
+
+                if log_buffer or transfer_buffer or reputation_buffer:
+                    await self._flush_buffers(
+                        log_buffer,
+                        transfer_buffer,
+                        reputation_buffer,
+                        node_name=node_name,
+                    )
+
+            if self._stopping.is_set():
+                break
+
+            await asyncio.sleep(self._settings.log_poll_interval)
 
     async def _get_loop(self) -> asyncio.AbstractEventLoop:
         try:
@@ -269,6 +317,62 @@ class LogMonitorService:
                 return True, current_fd_signature
 
         return False, current_fd_signature
+
+    async def _handle_stream_line(
+        self,
+        node_name: str,
+        line: str,
+        log_buffer: List[LogEntryCreate],
+        transfer_buffer: List[TransferCreate],
+        reputation_buffer: List[ReputationCreate],
+        *,
+        source_hint: str | None = None,
+    ) -> None:
+        (
+            processed_entries,
+            transfer_entries,
+            reputation_entries,
+            is_unprocessed,
+        ) = await self._process_line(node_name, line)
+
+        entry_count = len(processed_entries) if processed_entries else 0
+        logger.debug(
+            (
+                "Parsed log line; node=%s unprocessed=%s log_entries=%d transfers=%d "
+                "source=%s"
+            ),
+            node_name,
+            is_unprocessed,
+            entry_count,
+            len(transfer_entries),
+            source_hint or "stream",
+        )
+
+        if is_unprocessed:
+            await self._record_unprocessed(node_name, line)
+            return
+
+        if processed_entries is None:
+            return
+
+        if processed_entries:
+            log_buffer.extend(processed_entries)
+        if transfer_entries:
+            transfer_buffer.extend(transfer_entries)
+        if reputation_entries:
+            reputation_buffer.extend(reputation_entries)
+
+        if (
+            len(log_buffer) >= self._settings.log_batch_size
+            or len(transfer_buffer) >= self._settings.log_batch_size
+            or len(reputation_buffer) >= self._settings.log_batch_size
+        ):
+            await self._flush_buffers(
+                log_buffer,
+                transfer_buffer,
+                reputation_buffer,
+                node_name=node_name,
+            )
 
     async def _flush_buffers(
         self,

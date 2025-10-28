@@ -21,4 +21,6 @@ async def list_nodes(settings: Settings = Depends(get_settings)) -> list[NodeCon
     nodes = []
     for name, path in settings.parsed_log_sources:
         nodes.append(NodeConfig(name=name, path=str(path)))
+    for name, host, port in settings.parsed_remote_sources:
+        nodes.append(NodeConfig(name=name, path=f"tcp://{host}:{port}"))
     return nodes

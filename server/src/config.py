@@ -18,6 +18,7 @@ class Settings(BaseSettings):
 
     log_poll_interval: float = 1.0
     log_sources: List[str] = []
+    remote_sources: List[str] = []
     log_batch_size: int = 32
     days_offset: int = 0
 
@@ -38,6 +39,19 @@ class Settings(BaseSettings):
     @classmethod
     def _coerce_log_sources(cls, value):
         """Allow comma or newline separated env strings for log sources."""
+        if value in (None, ""):
+            return []
+        if isinstance(value, str):
+            cleaned = value.replace("\n", ",")
+            return [item.strip() for item in cleaned.split(",") if item.strip()]
+        if isinstance(value, (tuple, set, list)):
+            return [str(item).strip() for item in value if str(item).strip()]
+        return value
+
+    @field_validator("remote_sources", mode="before")
+    @classmethod
+    def _coerce_remote_sources(cls, value):
+        """Allow comma or newline separated env strings for remote sources."""
         if value in (None, ""):
             return []
         if isinstance(value, str):
@@ -88,6 +102,47 @@ class Settings(BaseSettings):
 
             path = Path(path_spec).expanduser().resolve()
             parsed.append((node_name, path))
+
+        return parsed
+
+    @property
+    def parsed_remote_sources(self) -> List[Tuple[str, str, int]]:
+        """Normalize declared remote node specifications into name/host/port tuples."""
+        parsed: List[Tuple[str, str, int]] = []
+        for raw in self.remote_sources:
+            try:
+                node_name, host, port_spec = raw.split(":", 2)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid remote specification '{raw}'. Expected format NAME:HOST:PORT."
+                ) from exc
+
+            node_name = node_name.strip()
+            host = host.strip()
+            port_spec = port_spec.strip()
+
+            if not node_name:
+                raise ValueError(f"Remote specification '{raw}' is missing a node name.")
+            if len(node_name) > 32:
+                raise ValueError(
+                    f"Remote specification '{raw}' has a node name longer than 32 characters."
+                )
+            if not host:
+                raise ValueError(f"Remote specification '{raw}' is missing a host name.")
+
+            try:
+                port = int(port_spec)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Remote specification '{raw}' has an invalid port '{port_spec}'."
+                ) from exc
+
+            if port <= 0 or port > 65535:
+                raise ValueError(
+                    f"Remote specification '{raw}' has a port outside the valid range (1-65535)."
+                )
+
+            parsed.append((node_name, host, port))
 
         return parsed
 
