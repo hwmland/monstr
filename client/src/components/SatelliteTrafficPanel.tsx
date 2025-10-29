@@ -184,9 +184,9 @@ const SatelliteTrafficPanel: FC<SatelliteTrafficPanelProps> = ({
         {chartData.length > 0 ? (
           <div className="traffic-chart">
             <ResponsiveContainer width="100%" height={320}>
-              <BarChart data={chartData} barGap={8} barCategoryGap="20%">
+              <BarChart data={chartData} barGap={6} barCategoryGap="20%">
                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                <XAxis dataKey="satellite" height={62} tick={{ fill: "var(--color-text-muted)", fontSize: 12 }} />
+                <XAxis dataKey="satellite" tick={{ fill: "var(--color-text-muted)", fontSize: 12 }} />
                 <YAxis
                   tickFormatter={(value: number) => formatValue(value)}
                   width={60}

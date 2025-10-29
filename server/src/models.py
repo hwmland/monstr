@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from sqlalchemy import JSON, Column, DateTime, Float, String
+from sqlalchemy import JSON, Column, DateTime, Float, String, Boolean, Integer
 from sqlmodel import Field, SQLModel
 
 
@@ -61,6 +61,12 @@ class Transfer(SQLModel, table=True):
     offset: Optional[int] = Field(default=None, description="Transfer offset")
     remote_address: Optional[str] = Field(default=None, description="Remote address for the transfer")
 
+    is_processed: bool = Field(
+        default=False,
+        sa_column=Column(Boolean, nullable=False, server_default="0"),
+        description="Flag indicating transfer has been processed",
+    )
+
 
 class Reputation(SQLModel, table=True):
     """Latest reputation metrics per source and satellite pair."""
@@ -94,7 +100,7 @@ class Reputation(SQLModel, table=True):
     )
 
 
-class TransportGrouped(SQLModel, table=True):
+class TransferGrouped(SQLModel, table=True):
     """Aggregated transfer metrics grouped by interval, satellite, and size class."""
 
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -117,6 +123,10 @@ class TransportGrouped(SQLModel, table=True):
     size_class: str = Field(
         sa_column=Column(String(8), nullable=False),
         description="Payload size class (e.g. 1K, 4K, 256K)",
+    )
+    granularity: int = Field(
+        sa_column=Column("granularity", Integer, nullable=False),
+        description="Granularity in minutes used to group this record",
     )
     size_dl_succ_nor: int = Field(default=0, description="Bytes for successful normal downloads")
     size_ul_succ_nor: int = Field(default=0, description="Bytes for successful normal uploads")

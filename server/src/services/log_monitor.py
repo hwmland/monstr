@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import aiofiles
+import socket
 
 from ..config import Settings
 from .. import database
@@ -207,6 +208,33 @@ class LogMonitorService:
                     port,
                 )
 
+                # Enable TCP keepalive on the underlying socket so the OS can detect
+                # dead peers after its configured probe interval. We attempt to set
+                # a few platform-specific tuneable values when available, but treat
+                # failures as non-fatal.
+                try:
+                    sock = writer.get_extra_info("socket")
+                    if sock is not None:
+                        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+                        # Try to set platform-specific keepalive tuning. These
+                        # constants may not be available on all platforms; ignore
+                        # errors and proceed with the default OS behavior.
+                        try:
+                            # Linux: TCP_KEEPIDLE, TCP_KEEPINTVL, TCP_KEEPCNT
+                            if hasattr(socket, "TCP_KEEPIDLE"):
+                                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 60)
+                            if hasattr(socket, "TCP_KEEPINTVL"):
+                                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 10)
+                            if hasattr(socket, "TCP_KEEPCNT"):
+                                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 6)
+                        except Exception:
+                            # Non-fatal: log at debug level and continue.
+                            logger.info("Could not tune TCP keepalive parameters", exc_info=True)
+                except Exception:
+                    logger.warning("Could not set SO_KEEPALIVE on remote connection socket", exc_info=True)
+
+                # Block on reader.readline() until data arrives or the peer closes
+                # the connection. Rely on TCP keepalive to detect dead peers.
                 while not self._stopping.is_set():
                     line_bytes = await reader.readline()
                     if not line_bytes:

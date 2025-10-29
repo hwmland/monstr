@@ -25,6 +25,7 @@ const DEFAULT_PANELS: Record<string, boolean> = {
   reputations: true,
   actualPerformance: true,
   satelliteTraffic: true,
+  dataDistribution: true,
 };
 
 const usePanelVisibilityStore = create<PanelVisibilityState>((set, get) => ({
@@ -45,13 +46,15 @@ const usePanelVisibilityStore = create<PanelVisibilityState>((set, get) => ({
   togglePanel: (panelId: string) => {
     const panels = get().panels;
     const current = panels[panelId] ?? true;
-    const next = { ...panels, [panelId]: !current };
+    // Merge with defaults to avoid persisting an incomplete object that would
+    // shadow other panel flags when reloaded from storage.
+    const next = { ...DEFAULT_PANELS, ...panels, [panelId]: !current };
     set({ panels: next });
     persistPanels(next);
   },
   setPanelVisibility: (panelId: string, isVisible: boolean) => {
     set((state) => {
-      const next = { ...state.panels, [panelId]: isVisible };
+      const next = { ...DEFAULT_PANELS, ...state.panels, [panelId]: isVisible };
       persistPanels(next);
       return { panels: next };
     });

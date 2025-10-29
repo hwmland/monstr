@@ -2,6 +2,7 @@ import ActualPerformancePanel from "../components/ActualPerformancePanel";
 import NodesPanel from "../components/NodesPanel";
 import ReputationsPanel from "../components/ReputationsPanel";
 import SatelliteTrafficPanel from "../components/SatelliteTrafficPanel";
+import DataSizeDistributionPanel from "../components/DataSizeDistributionPanel";
 import useTransfersActual from "../hooks/useActualPerformancePanel";
 import usePanelVisibilityStore from "../store/usePanelVisibility";
 
@@ -20,26 +21,32 @@ const HomePage = () => {
     <div className="page">
       <NodesPanel />
       {shouldRenderTransfers ? (
-        <div className="transfer-panels">
-          {showSatelliteTraffic ? (
-            <SatelliteTrafficPanel
-              data={data}
-              isLoading={isLoading}
-              error={error}
-              refresh={refresh}
-              selectedNodes={selectedNodes}
-            />
+        <>
+          <div className="transfer-panels">
+            {showSatelliteTraffic ? (
+              <SatelliteTrafficPanel
+                data={data}
+                isLoading={isLoading}
+                error={error}
+                refresh={refresh}
+                selectedNodes={selectedNodes}
+              />
+            ) : null}
+            {showActualPerformance ? (
+              <ActualPerformancePanel
+                aggregated={aggregated}
+                isLoading={isLoading}
+                error={error}
+                refresh={refresh}
+                selectedNodes={selectedNodes}
+              />
+            ) : null}
+          </div>
+
+          {isVisible("dataDistribution") ? (
+            <DataSizeDistributionPanel selectedNodes={selectedNodes} />
           ) : null}
-          {showActualPerformance ? (
-            <ActualPerformancePanel
-              aggregated={aggregated}
-              isLoading={isLoading}
-              error={error}
-              refresh={refresh}
-              selectedNodes={selectedNodes}
-            />
-          ) : null}
-        </div>
+        </>
       ) : null}
       {isVisible("reputations") ? <ReputationsPanel /> : null}
     </div>

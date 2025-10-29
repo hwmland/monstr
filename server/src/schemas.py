@@ -118,6 +118,7 @@ class TransferRead(BaseModel):
     timestamp: datetime
     action: str
     is_success: bool
+    is_processed: bool
     piece_id: str
     satellite_id: str
     is_repair: bool
@@ -176,12 +177,13 @@ class TransferActualResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-class TransportGroupedCreate(BaseModel):
+class TransferGroupedCreate(BaseModel):
     source: str
     satellite_id: str = Field(serialization_alias="satelliteId", validation_alias="satelliteId")
     interval_start: datetime = Field(serialization_alias="intervalStart", validation_alias="intervalStart")
     interval_end: datetime = Field(serialization_alias="intervalEnd", validation_alias="intervalEnd")
     size_class: str = Field(serialization_alias="sizeClass", validation_alias="sizeClass")
+    granularity: int = Field(default=0, serialization_alias="granularity", validation_alias="granularity")
     size_dl_succ_nor: int = Field(default=0, serialization_alias="sizeDlSuccNor", validation_alias="sizeDlSuccNor")
     size_ul_succ_nor: int = Field(default=0, serialization_alias="sizeUlSuccNor", validation_alias="sizeUlSuccNor")
     size_dl_fail_nor: int = Field(default=0, serialization_alias="sizeDlFailNor", validation_alias="sizeDlFailNor")
@@ -202,7 +204,7 @@ class TransportGroupedCreate(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-class TransportGroupedRead(BaseModel):
+class TransferGroupedRead(BaseModel):
     id: int
     source: str
     satellite_id: str = Field(serialization_alias="satelliteId")
@@ -217,6 +219,7 @@ class TransportGroupedRead(BaseModel):
     size_ul_succ_rep: int = Field(serialization_alias="sizeUlSuccRep")
     size_dl_fail_rep: int = Field(serialization_alias="sizeDlFailRep")
     size_ul_fail_rep: int = Field(serialization_alias="sizeUlFailRep")
+    granularity: int = Field(serialization_alias="granularity")
     count_dl_succ_nor: int = Field(serialization_alias="countDlSuccNor")
     count_ul_succ_nor: int = Field(serialization_alias="countUlSuccNor")
     count_dl_fail_nor: int = Field(serialization_alias="countDlFailNor")
@@ -229,10 +232,11 @@ class TransportGroupedRead(BaseModel):
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
 
-class TransportGroupedFilters(BaseModel):
+class TransferGroupedFilters(BaseModel):
     source: Optional[str] = None
     satellite_id: Optional[str] = Field(default=None, serialization_alias="satelliteId", validation_alias="satelliteId")
     size_class: Optional[str] = Field(default=None, serialization_alias="sizeClass", validation_alias="sizeClass")
+    granularity: Optional[int] = Field(default=None)
     interval_start_from: Optional[datetime] = Field(default=None, serialization_alias="intervalStartFrom", validation_alias="intervalStartFrom")
     interval_start_to: Optional[datetime] = Field(default=None, serialization_alias="intervalStartTo", validation_alias="intervalStartTo")
     limit: int = Field(default=100, ge=1, le=1000)
@@ -243,3 +247,36 @@ class TransportGroupedFilters(BaseModel):
 class NodeConfig(BaseModel):
     name: str = Field(..., description="Node identifier configured in settings")
     path: str = Field(..., description="Absolute path to the node log file")
+
+
+class DataDistributionRequest(BaseModel):
+    nodes: list[str] = Field(default_factory=list, description="Nodes to include in the distribution; empty means all nodes.")
+
+
+class DataDistributionItem(BaseModel):
+    size_class: str = Field(serialization_alias="sizeClass")
+    size_dl_succ_nor: int = Field(default=0, serialization_alias="sizeDlSuccNor")
+    size_ul_succ_nor: int = Field(default=0, serialization_alias="sizeUlSuccNor")
+    size_dl_fail_nor: int = Field(default=0, serialization_alias="sizeDlFailNor")
+    size_ul_fail_nor: int = Field(default=0, serialization_alias="sizeUlFailNor")
+    size_dl_succ_rep: int = Field(default=0, serialization_alias="sizeDlSuccRep")
+    size_ul_succ_rep: int = Field(default=0, serialization_alias="sizeUlSuccRep")
+    size_dl_fail_rep: int = Field(default=0, serialization_alias="sizeDlFailRep")
+    size_ul_fail_rep: int = Field(default=0, serialization_alias="sizeUlFailRep")
+
+    count_dl_succ_nor: int = Field(default=0, serialization_alias="countDlSuccNor")
+    count_ul_succ_nor: int = Field(default=0, serialization_alias="countUlSuccNor")
+    count_dl_fail_nor: int = Field(default=0, serialization_alias="countDlFailNor")
+    count_ul_fail_nor: int = Field(default=0, serialization_alias="countUlFailNor")
+    count_dl_succ_rep: int = Field(default=0, serialization_alias="countDlSuccRep")
+    count_ul_succ_rep: int = Field(default=0, serialization_alias="countUlSuccRep")
+    count_dl_fail_rep: int = Field(default=0, serialization_alias="countDlFailRep")
+    count_ul_fail_rep: int = Field(default=0, serialization_alias="countUlFailRep")
+
+
+class DataDistributionResponse(BaseModel):
+    start_time: datetime = Field(serialization_alias="startTime")
+    end_time: datetime = Field(serialization_alias="endTime")
+    distribution: list[DataDistributionItem] = Field(serialization_alias="distribution")
+
+    model_config = ConfigDict(populate_by_name=True)

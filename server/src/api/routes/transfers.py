@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import timedelta
+from datetime import timedelta, timezone
 from typing import Sequence
 
 from fastapi import APIRouter, Depends, Request
+import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...config import Settings
@@ -22,6 +23,8 @@ from ...schemas import (
 )
 
 router = APIRouter(prefix="/api/transfers", tags=["transfers"])
+
+logger = logging.getLogger(__name__)
 
 
 @router.get("", response_model=list[TransferRead], tags=["raw"])
@@ -52,8 +55,17 @@ async def get_transfer_actuals(
     nodes = sorted({node for node in payload.nodes if node})
     records = await repository.list_for_sources_between(nodes or None, start_time, end_time)
 
-    interval_seconds = max((end_time - start_time).total_seconds(), 1.0)
+    # Calculate start_time based on actual data: use the first record timestamp if available
+    if records:
+        start_time = min(r.timestamp for r in records)
 
+        # normalize to UTC-aware to avoid mixing naive/aware datetimes
+        if start_time.tzinfo is None:
+            start_time = start_time.replace(tzinfo=timezone.utc)
+        else:
+            start_time = start_time.astimezone(timezone.utc)
+    interval_seconds = max((end_time - start_time).total_seconds(), 1.0)
+        
     def new_bucket() -> dict[str, float]:
         return {"operations_total": 0, "operations_success": 0, "bytes": 0}
 

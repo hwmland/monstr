@@ -103,8 +103,8 @@ async def test_migrates_source_and_satellite_columns(tmp_path: Path) -> None:
     assert row[0] == "x" * 32
     assert row[1] == "s" * 64
 
-    transport_columns = connection.execute("PRAGMA table_info(transportgrouped)").fetchall()
-    column_names = {column[1] for column in transport_columns}
+    transfer_columns = connection.execute("PRAGMA table_info(transfergrouped)").fetchall()
+    column_names = {column[1] for column in transfer_columns}
     assert "size_class" in column_names
     assert "interval_start" in column_names
 

@@ -161,3 +161,8 @@ export const fetchActualPerformance = async (
     satellites,
   };
 };
+
+export const fetchDataDistribution = async (nodes: string[]) => {
+  const response = await apiClient.post("/transfer-grouped/data-distribution", { nodes });
+  return response.data;
+};

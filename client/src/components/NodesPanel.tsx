@@ -1,6 +1,7 @@
 import type { FC } from "react";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import useNodes from "../hooks/useNodes";
 import usePanelVisibilityStore from "../store/usePanelVisibility";
@@ -60,36 +61,54 @@ const NodesPanel: FC = () => {
         </div>
       </header>
 
-      {error ? <p className="panel__error">{error}</p> : null}
+      {isPanelPickerOpen
+        ? createPortal(
+            <div
+              className="panel-picker-overlay"
+              onMouseDown={() => setPanelPickerOpen(false)}
+              role="dialog"
+              aria-modal="true"
+            >
+              <div className="panel-picker" ref={pickerRef} onMouseDown={(e) => e.stopPropagation()}>
+                <label className="panel-picker__item">
+                  <input
+                    type="checkbox"
+                    checked={panels.satelliteTraffic ?? true}
+                    onChange={() => togglePanel("satelliteTraffic")}
+                  />
+                  <span>Satellite Traffic</span>
+                </label>
+                <label className="panel-picker__item">
+                  <input
+                    type="checkbox"
+                    checked={panels.actualPerformance ?? true}
+                    onChange={() => togglePanel("actualPerformance")}
+                  />
+                  <span>Actual Performance</span>
+                </label>
+                <label className="panel-picker__item">
+                  <input
+                    type="checkbox"
+                    checked={panels.dataDistribution ?? true}
+                    onChange={() => togglePanel("dataDistribution")}
+                  />
+                  <span>Data Size Distribution</span>
+                </label>
+                <label className="panel-picker__item">
+                  <input
+                    type="checkbox"
+                    checked={panels.reputations ?? true}
+                    onChange={() => togglePanel("reputations")}
+                  />
+                  <span>Reputations</span>
+                </label>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
 
-      {isPanelPickerOpen ? (
-        <div className="panel-picker" ref={pickerRef}>
-          <label className="panel-picker__item">
-            <input
-              type="checkbox"
-              checked={panels.satelliteTraffic ?? true}
-              onChange={() => togglePanel("satelliteTraffic")}
-            />
-            <span>Satellite Traffic</span>
-          </label>
-          <label className="panel-picker__item">
-            <input
-              type="checkbox"
-              checked={panels.actualPerformance ?? true}
-              onChange={() => togglePanel("actualPerformance")}
-            />
-            <span>Actual Performance</span>
-          </label>
-          <label className="panel-picker__item">
-            <input
-              type="checkbox"
-              checked={panels.reputations ?? true}
-              onChange={() => togglePanel("reputations")}
-            />
-            <span>Reputations</span>
-          </label>
-        </div>
-      ) : null}
+      {error ? <p className="panel__error">{error}</p> : null}
 
       <div className="panel__body">
         {isLoading && nodes.length === 0 ? <p className="panel__status">Loading nodes…</p> : null}

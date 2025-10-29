@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     days_offset: int = 0
 
     cleanup_interval_seconds: int = 300
+    grouping_interval_seconds: int = 120
     retention_minutes: int = 1440 * 7 * 4 # 4 weeks in minutes
     frontend_dist_dir: Optional[str] = "../client/dist"
     unprocessed_log_dir: str = "../data/"

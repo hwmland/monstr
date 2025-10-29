@@ -100,8 +100,21 @@ def _migrate_0_to_1(conn: Connection) -> None:
         (models.Reputation.__table__, {"source": 32, "satellite_id": 64}),
     ):
         _rebuild_table_with_capped_columns(conn, table, capped_columns)
-    logger.info("Ensuring transport_grouped table exists")
-    models.TransportGrouped.__table__.create(conn, checkfirst=True)
+    logger.info("Ensuring transfer_grouped table exists")
+    models.TransferGrouped.__table__.create(conn, checkfirst=True)
+    # inspector is used below for schema checks
+    inspector = inspect(conn)
+    # Ensure column 'is_processed' exists on existing transfer tables.
+    transfer_table_name = models.Transfer.__table__.name
+    if inspector.has_table(transfer_table_name):
+        cols = {col['name'] for col in inspector.get_columns(transfer_table_name)}
+        if 'is_processed' not in cols:
+            # SQLite supports adding a column with a default value.
+            conn.execute(
+                text(
+                    f'ALTER TABLE "{transfer_table_name}" ADD COLUMN "is_processed" INTEGER NOT NULL DEFAULT 0'
+                )
+            )
     logger.info("Completed migration 0 -> 1")
 
 

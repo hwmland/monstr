@@ -1,10 +1,10 @@
-from . import health, logs, nodes, reputations, transport_grouped, transfers
+from . import health, logs, nodes, reputations, transfer_grouped, transfers
 
 __all__ = [
 	"health",
 	"logs",
 	"nodes",
 	"reputations",
-	"transport_grouped",
+	"transfer_grouped",
 	"transfers",
 ]

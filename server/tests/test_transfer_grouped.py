@@ -8,12 +8,12 @@ from httpx import ASGITransport, AsyncClient
 from server.src import database
 from server.src.config import Settings
 from server.src.core.app import create_app
-from server.src.repositories.transport_grouped import TransportGroupedRepository
-from server.src.schemas import TransportGroupedCreate
+from server.src.repositories.transfer_grouped import TransferGroupedRepository
+from server.src.schemas import TransferGroupedCreate
 
 
 @pytest.mark.asyncio
-async def test_list_transport_grouped_filters() -> None:
+async def test_list_transfer_grouped_filters() -> None:
     app_settings = Settings(log_sources=[])
     app = create_app(app_settings)
     await database.init_database(app_settings)
@@ -23,7 +23,7 @@ async def test_list_transport_grouped_filters() -> None:
     interval_end = interval_start + timedelta(hours=1)
 
     entries = [
-        TransportGroupedCreate(
+        TransferGroupedCreate(
             source="node-a",
             satellite_id="sat-1",
             interval_start=interval_start,
@@ -32,7 +32,7 @@ async def test_list_transport_grouped_filters() -> None:
             size_dl_succ_nor=1024,
             count_dl_succ_nor=1,
         ),
-        TransportGroupedCreate(
+        TransferGroupedCreate(
             source="node-b",
             satellite_id="sat-2",
             interval_start=interval_start,
@@ -44,12 +44,12 @@ async def test_list_transport_grouped_filters() -> None:
     ]
 
     async with database.SessionFactory() as session:
-        repository = TransportGroupedRepository(session)
+        repository = TransferGroupedRepository(session)
         await repository.create_many(entries)
 
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.get(
-            "/api/transport-grouped",
+            "/api/transfer-grouped",
             params={"source": "node-a"},
         )
 
@@ -65,7 +65,7 @@ async def test_list_transport_grouped_filters() -> None:
 
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         response_class = await client.get(
-            "/api/transport-grouped",
+            "/api/transfer-grouped",
             params={"sizeClass": "4K"},
         )
 

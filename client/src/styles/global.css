@@ -204,6 +204,27 @@ a {
   display: inline-flex;
   flex-direction: column;
   gap: 0.4rem;
+  position: fixed !important;
+  top: 72px !important; /* below top app bar */
+  right: 20px !important;
+  z-index: 2147483647 !important; /* make sure it's above everything */
+  box-shadow: 0 8px 30px rgba(8, 15, 35, 0.6);
+  width: min(360px, 90vw);
+  max-width: 360px;
+  pointer-events: auto;
+  transform: translateZ(0); /* create new stacking context to avoid being clipped */
+  overflow: auto;
+}
+
+.panel-picker-overlay {
+  position: fixed !important;
+  inset: 0;
+  z-index: 2147483646 !important;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  padding-top: 56px; /* offset from top bar */
+  pointer-events: auto;
 }
 
 .panel-picker__item {
