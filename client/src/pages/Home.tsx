@@ -3,6 +3,7 @@ import NodesPanel from "../components/NodesPanel";
 import ReputationsPanel from "../components/ReputationsPanel";
 import SatelliteTrafficPanel from "../components/SatelliteTrafficPanel";
 import DataSizeDistributionPanel from "../components/DataSizeDistributionPanel";
+import HourlyTrafficPanel from "../components/HourlyTrafficPanel";
 import useTransfersActual from "../hooks/useActualPerformancePanel";
 import usePanelVisibilityStore from "../store/usePanelVisibility";
 
@@ -10,8 +11,9 @@ const HomePage = () => {
   const { isVisible } = usePanelVisibilityStore();
   const showSatelliteTraffic = isVisible("satelliteTraffic");
   const showActualPerformance = isVisible("actualPerformance");
+  const showHourlyTraffic = isVisible("hourlyTraffic");
   const shouldLoadTransfers = showSatelliteTraffic || showActualPerformance;
-  const shouldRenderTransfers = showSatelliteTraffic || showActualPerformance;
+  const shouldRenderTransfers = showSatelliteTraffic || showActualPerformance || showHourlyTraffic;
 
   const { data, aggregated, isLoading, error, refresh, selectedNodes } = useTransfersActual({
     enabled: shouldLoadTransfers,
@@ -32,6 +34,8 @@ const HomePage = () => {
                 selectedNodes={selectedNodes}
               />
             ) : null}
+            {showHourlyTraffic ? <HourlyTrafficPanel /> : null}
+
             {showActualPerformance ? (
               <ActualPerformancePanel
                 aggregated={aggregated}

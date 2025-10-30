@@ -356,6 +356,68 @@ a {
   color: var(--color-text-muted);
 }
 
+/* Hourly traffic table layout */
+.hourly-grid {
+  width: 100%;
+}
+.hourly-grid .table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+.hourly-grid .table th,
+.hourly-grid .table td {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+.hourly-grid .table thead th {
+  color: var(--color-text);
+  font-weight: 600;
+}
+.hourly-grid .table tbody tr:last-of-type td {
+  border-bottom: none;
+}
+.hourly-grid .table td:first-child {
+  text-align: left;
+}
+.hourly-grid .table td:not(:first-child) {
+  text-align: right;
+}
+
+/* stronger divider under table header */
+.hourly-grid .table thead th {
+  border-bottom: 2px solid rgba(148, 163, 184, 0.4);
+}
+
+/* Column width helpers for hourly table */
+.hourly-grid .table th.col-time,
+.hourly-grid .table td.col-time {
+  width: 6%;
+  text-align: left;
+}
+.hourly-grid .table th.col-dlpct,
+.hourly-grid .table td.col-dlpct {
+  width: 20%;
+  text-align: right;
+}
+.hourly-grid .table th.col-ulpct,
+.hourly-grid .table td.col-ulpct {
+  width: 20%;
+  text-align: right;
+}
+.hourly-grid .table th.col-dlspeed,
+.hourly-grid .table td.col-dlspeed {
+  width: 27%;
+  text-align: right;
+}
+.hourly-grid .table th.col-ulspeed,
+.hourly-grid .table td.col-ulspeed {
+  width: 27%;
+  text-align: right;
+}
+
 .performance-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -402,7 +464,7 @@ a {
 }
 
 .performance-data-value {
-  margin: 0;
+  margin: 0.6rem 0;
   font-size: 1.2rem;
   font-weight: 600;
   color: var(--color-text);

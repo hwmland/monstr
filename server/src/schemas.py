@@ -280,3 +280,41 @@ class DataDistributionResponse(BaseModel):
     distribution: list[DataDistributionItem] = Field(serialization_alias="distribution")
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+class HourlyTransfersRequest(BaseModel):
+    nodes: list[str] = Field(default_factory=list, description="Nodes to include in aggregation; empty means all nodes.")
+    hours: int = Field(default=6, ge=1, le=168, description="Number of hours backwards from now to include")
+
+
+class HourlyTransferBucket(BaseModel):
+    bucket_start: datetime = Field(serialization_alias="bucketStart")
+    bucket_end: datetime = Field(serialization_alias="bucketEnd")
+
+    # size fields (bytes)
+    size_dl_succ_nor: int = Field(default=0, serialization_alias="sizeDlSuccNor")
+    size_ul_succ_nor: int = Field(default=0, serialization_alias="sizeUlSuccNor")
+    size_dl_fail_nor: int = Field(default=0, serialization_alias="sizeDlFailNor")
+    size_ul_fail_nor: int = Field(default=0, serialization_alias="sizeUlFailNor")
+    size_dl_succ_rep: int = Field(default=0, serialization_alias="sizeDlSuccRep")
+    size_ul_succ_rep: int = Field(default=0, serialization_alias="sizeUlSuccRep")
+    size_dl_fail_rep: int = Field(default=0, serialization_alias="sizeDlFailRep")
+    size_ul_fail_rep: int = Field(default=0, serialization_alias="sizeUlFailRep")
+
+    # count fields
+    count_dl_succ_nor: int = Field(default=0, serialization_alias="countDlSuccNor")
+    count_ul_succ_nor: int = Field(default=0, serialization_alias="countUlSuccNor")
+    count_dl_fail_nor: int = Field(default=0, serialization_alias="countDlFailNor")
+    count_ul_fail_nor: int = Field(default=0, serialization_alias="countUlFailNor")
+    count_dl_succ_rep: int = Field(default=0, serialization_alias="countDlSuccRep")
+    count_ul_succ_rep: int = Field(default=0, serialization_alias="countUlSuccRep")
+    count_dl_fail_rep: int = Field(default=0, serialization_alias="countDlFailRep")
+    count_ul_fail_rep: int = Field(default=0, serialization_alias="countUlFailRep")
+
+
+class HourlyTransfersResponse(BaseModel):
+    start_time: datetime = Field(serialization_alias="startTime")
+    end_time: datetime = Field(serialization_alias="endTime")
+    buckets: list[HourlyTransferBucket] = Field(serialization_alias="buckets")
+
+    model_config = ConfigDict(populate_by_name=True)

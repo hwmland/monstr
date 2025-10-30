@@ -28,6 +28,8 @@ class TransferGroupedRepository:
 
         if filters.source:
             stmt = stmt.where(TransferGrouped.source == filters.source)
+        if filters.granularity is not None:
+            stmt = stmt.where(TransferGrouped.granularity == filters.granularity)
         if filters.satellite_id:
             stmt = stmt.where(TransferGrouped.satellite_id == filters.satellite_id)
         if filters.size_class:

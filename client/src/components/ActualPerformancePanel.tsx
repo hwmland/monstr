@@ -1,6 +1,6 @@
 import type { FC } from "react";
 
-import { COLOR_STATUS_GREEN, COLOR_STATUS_RED, COLOR_STATUS_YELLOW } from "../constants/colors";
+import { resolveSuccessColor } from "../utils/colors";
 import type { TransferActualAggregated } from "../types";
 import { formatWindowTime } from "../utils/time";
 import {
@@ -50,16 +50,6 @@ const buildMetricView = (
     sizeValue,
     sizeUnit,
   };
-};
-
-const resolveSuccessColor = (percent: number): string => {
-  if (percent < 80) {
-    return COLOR_STATUS_RED;
-  }
-  if (percent >= 90) {
-    return COLOR_STATUS_GREEN;
-  }
-  return COLOR_STATUS_YELLOW;
 };
 
 interface ActualPerformancePanelProps {

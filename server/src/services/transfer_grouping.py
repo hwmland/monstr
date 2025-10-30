@@ -68,7 +68,7 @@ class TransferGroupingService:
                     # Process transfers into 1-minute grouped aggregates.
                     await self._process_batch(transfer_repo, grouped_repo)
                     # Promote 1-minute groups into 5-minute groups when possible.
-                    await self._promote_groups(grouped_repo, from_gran=1, to_gran=5)
+                    await self._promote_groups(grouped_repo, from_gran=1, to_gran=5, min_old_minutes=120, newest_threshold_minutes=90)
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001
@@ -236,8 +236,8 @@ class TransferGroupingService:
         grouped_repo: TransferGroupedRepository,
         from_gran: int,
         to_gran: int,
-        min_old_minutes: int = 120,
-        newest_threshold_minutes: int = 90,
+        min_old_minutes: int,
+        newest_threshold_minutes: int,
     ) -> None:
         """Promote grouped records from a finer granularity to a coarser one.
 
