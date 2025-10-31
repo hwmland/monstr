@@ -5,7 +5,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -13,6 +12,7 @@ import {
 } from "recharts";
 
 import { fetchDataDistribution } from "../services/apiClient";
+import Legend from "./Legend";
 import { formatSizeValue, pickSizeUnit } from "../utils/units";
 import { formatWindowTime } from "../utils/time";
 
@@ -21,6 +21,8 @@ type Mode = "size" | "count" | "sizePercent" | "countPercent";
 interface DataSizeDistributionPanelProps {
   selectedNodes: string[];
 }
+
+const CHART_HEIGHT = 270;
 
 const DataSizeDistributionPanel: FC<DataSizeDistributionPanelProps> = ({ selectedNodes }) => {
   const { isVisible } = usePanelVisibilityStore();
@@ -252,13 +254,13 @@ const DataSizeDistributionPanel: FC<DataSizeDistributionPanelProps> = ({ selecte
         <div style={{ display: "flex", gap: 12 }}>
           <div style={{ flex: 1 }}>
             <h3 style={{ marginBottom: 8 }}>Download</h3>
-            <ResponsiveContainer width="100%" height={320}>
-              <BarChart data={chartDownload} barGap={6} barCategoryGap="20%">
+            <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
+              <BarChart data={chartDownload} barGap={6} barCategoryGap="20%" margin={{ bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                <XAxis dataKey="sizeClass" tick={{ fill: "var(--color-text-muted)", fontSize: 12 }} />
+                <XAxis dataKey="sizeClass" tick={{ fill: "var(--color-text-muted)", fontSize: 13 }} angle={-45} textAnchor="end" height={40} />
                 <YAxis
                   width={60}
-                  tick={{ fill: "var(--color-text-muted)", fontSize: 12 }}
+                  tick={{ fill: "var(--color-text-muted)", fontSize: 13 }}
                   tickFormatter={(v: any) => {
                     if (mode === 'size') return formatSizeValue(Number(v) / (sizeUnitDlFactor || 1));
                     if (mode === 'sizePercent' || mode === 'countPercent') return Number(v).toFixed(1);
@@ -271,7 +273,7 @@ const DataSizeDistributionPanel: FC<DataSizeDistributionPanelProps> = ({ selecte
                   if (mode === 'sizePercent' || mode === 'countPercent') return renderTooltipPercent(v, name);
                   return renderTooltipCount(v, name);
                 }} cursor={{ fill: "rgba(148, 163, 184, 0.05)" }} />
-                <Legend formatter={legendFormatter} />
+                
                 <Bar dataKey={mode === "size" ? "downloadNormalSize" : mode === "count" ? "downloadNormalSuccess" : mode === "sizePercent" ? "downloadNormalSizePct" : "downloadNormalSuccessPct"} stackId="dl" fill="#10784A" isAnimationActive={false} />
                 <Bar dataKey={mode === "size" ? "downloadRepairSize" : mode === "count" ? "downloadRepairSuccess" : mode === "sizePercent" ? "downloadRepairSizePct" : "downloadRepairSuccessPct"} stackId="dl" fill="#34D399" isAnimationActive={false} />
                 <Bar dataKey={mode === "size" ? "downloadNormalFailSize" : mode === "count" ? "downloadNormalFail" : mode === "sizePercent" ? "downloadNormalFailSizePct" : "downloadNormalFailPct"} stackId="dl" fill="#EF4444" isAnimationActive={false} />
@@ -282,13 +284,13 @@ const DataSizeDistributionPanel: FC<DataSizeDistributionPanelProps> = ({ selecte
 
           <div style={{ flex: 1 }}>
             <h3 style={{ marginBottom: 8 }}>Upload</h3>
-            <ResponsiveContainer width="100%" height={320}>
-              <BarChart data={chartUpload} barGap={6} barCategoryGap="20%">
+            <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
+              <BarChart data={chartUpload} barGap={6} barCategoryGap="20%" margin={{ bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                <XAxis dataKey="sizeClass" tick={{ fill: "var(--color-text-muted)", fontSize: 12 }} />
+                <XAxis dataKey="sizeClass" tick={{ fill: "var(--color-text-muted)", fontSize: 13 }} angle={-45} textAnchor="end" height={40} />
                 <YAxis
                   width={60}
-                  tick={{ fill: "var(--color-text-muted)", fontSize: 12 }}
+                  tick={{ fill: "var(--color-text-muted)", fontSize: 13 }}
                   tickFormatter={(v: any) => {
                     if (mode === 'size') return formatSizeValue(Number(v) / (sizeUnitUlFactor || 1));
                     if (mode === 'sizePercent' || mode === 'countPercent') return Number(v).toFixed(1);
@@ -301,7 +303,7 @@ const DataSizeDistributionPanel: FC<DataSizeDistributionPanelProps> = ({ selecte
                   if (mode === 'sizePercent' || mode === 'countPercent') return renderTooltipPercent(v, name);
                   return renderTooltipCount(v, name);
                 }} cursor={{ fill: "rgba(148, 163, 184, 0.05)" }} />
-                <Legend formatter={legendFormatter} />
+                
                 <Bar dataKey={mode === "size" ? "uploadNormalSize" : mode === "count" ? "uploadNormalSuccess" : mode === "sizePercent" ? "uploadNormalSizePct" : "uploadNormalSuccessPct"} stackId="ul" fill="#10784A" isAnimationActive={false} />
                 <Bar dataKey={mode === "size" ? "uploadRepairSize" : mode === "count" ? "uploadRepairSuccess" : mode === "sizePercent" ? "uploadRepairSizePct" : "uploadRepairSuccessPct"} stackId="ul" fill="#34D399" isAnimationActive={false} />
                 <Bar dataKey={mode === "size" ? "uploadNormalFailSize" : mode === "count" ? "uploadNormalFail" : mode === "sizePercent" ? "uploadNormalFailSizePct" : "uploadNormalFailPct"} stackId="ul" fill="#EF4444" isAnimationActive={false} />
@@ -310,6 +312,13 @@ const DataSizeDistributionPanel: FC<DataSizeDistributionPanelProps> = ({ selecte
             </ResponsiveContainer>
           </div>
         </div>
+        {/* Shared legend placed under the charts */}
+        <Legend items={[
+          { label: 'Normal', color: '#10784A' },
+          { label: 'Repair', color: '#34D399' },
+          { label: 'Fail - Normal', color: '#EF4444' },
+          { label: 'Fail - Repair', color: '#F97316' },
+        ]} />
       </div>
     </section>
   );

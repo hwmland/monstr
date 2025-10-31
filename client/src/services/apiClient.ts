@@ -167,7 +167,7 @@ export const fetchDataDistribution = async (nodes: string[]) => {
   return response.data;
 };
 
-export const fetchHourlyTransfers = async (nodes: string[], hours = 6) => {
-  const response = await apiClient.post("/transfer-grouped/hourly", { nodes, hours });
+export const fetchIntervalTransfers = async (nodes: string[], intervalLength: string, numberOfIntervals: number) => {
+  const response = await apiClient.post("/transfer-grouped/intervals", { nodes, intervalLength, numberOfIntervals });
   return response.data;
 };

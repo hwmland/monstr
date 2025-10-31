@@ -9,11 +9,12 @@ from ...database import get_session
 from ...repositories.transfer_grouped import TransferGroupedRepository
 from ...schemas import TransferGroupedFilters, TransferGroupedRead
 from ...schemas import DataDistributionRequest, DataDistributionResponse, DataDistributionItem
-from ...schemas import HourlyTransfersRequest, HourlyTransfersResponse, HourlyTransferBucket
+from ...schemas import IntervalTransferResponse, IntervalTransferBucket
 from datetime import datetime, timezone, timedelta
 from ...models import TransferGrouped
 from sqlalchemy import select, func
 from ...repositories.transfers import TransferRepository
+from ...schemas import IntervalTransfersRequest
 
 router = APIRouter(prefix="/api/transfer-grouped", tags=["transfer-grouped"])
 
@@ -107,67 +108,90 @@ async def data_distribution(
     return DataDistributionResponse(start_time=start_time, end_time=now, distribution=distribution)
 
 
-@router.post("/hourly", response_model=HourlyTransfersResponse)
-async def hourly_transfers(
-    payload: HourlyTransfersRequest,
-    session: AsyncSession = Depends(get_session),
-) -> HourlyTransfersResponse:
-    """Return hourly summed transfer metrics over the last N hours.
+def parse_interval_length(spec: str) -> timedelta:
+    """Parse interval length strings like '10s', '2m', '10m', '1h' into timedelta."""
+    spec = spec.strip().lower()
+    if spec.endswith('s'):
+        return timedelta(seconds=int(spec[:-1]))
+    if spec.endswith('m'):
+        return timedelta(minutes=int(spec[:-1]))
+    if spec.endswith('h'):
+        return timedelta(hours=int(spec[:-1]))
+    # fallback: try integer seconds
+    return timedelta(seconds=int(spec))
 
-    Algorithm:
-    - Compute start_time = now - hours, rounded up to the next full hour (so buckets align to hour boundaries)
-    - Read granularity=5 records with interval_start >= start_time
-    - Find maximum interval_end among those records -> granularity5_end
-    - Read granularity=1 records with interval_start >= granularity5_end
-    - Combine both sets, bucket by full hours (e.g., 13:00-14:00), sum all size and count fields per bucket
-    - Clip the endtime of the last bucket to now
-    - Return list of hourly buckets with bucketStart/bucketEnd and summed counters
+
+def round_down_to_interval(dt: datetime, interval: timedelta) -> datetime:
+    """Round down a timezone-aware datetime to the nearest interval boundary (interval starting point)."""
+    # ensure timezone-aware UTC
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+
+    total_seconds = int(dt.timestamp())
+    interval_seconds = int(interval.total_seconds())
+    bucket_start_ts = (total_seconds // interval_seconds) * interval_seconds
+    return datetime.fromtimestamp(bucket_start_ts, tz=timezone.utc)
+
+
+@router.post("/intervals", response_model=IntervalTransferResponse)
+async def interval_transfers(
+    payload: IntervalTransfersRequest,
+    session: AsyncSession = Depends(get_session),
+) -> IntervalTransferResponse:
+    """Return transfer aggregates bucketed into arbitrary interval lengths.
+
+    This mirrors the hourly endpoint but uses the requested interval length and number of intervals.
+    The same algorithm is used: read granularity=5 from start_time, then granularity=1 from gran5_end,
+    then raw Transfer rows since gran1_end. Bucket all rows by interval_length boundaries and sum counters.
+    The response reuses IntervalTransferResponse/IntervalTransferBucket models (bucketStart/bucketEnd and counters).
     """
     now = datetime.now(timezone.utc)
 
-    # compute nominal start and round up to full hour
-    nominal_start = now - timedelta(hours=payload.hours)
-    # round up to next hour boundary if not already exact
-    if nominal_start.minute != 0 or nominal_start.second != 0 or nominal_start.microsecond != 0:
-        rounded_start = (nominal_start.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1))
-    else:
-        rounded_start = nominal_start.replace(minute=0, second=0, microsecond=0)
+    interval = parse_interval_length(payload.interval_length)
+
+    # compute nominal start and round down to interval boundary
+    intervals = payload.number_of_intervals - 1 # because of rounding down I need to decrease number or intervals.
+    nominal_start = now - (interval * intervals)
+    rounded_start = round_down_to_interval(nominal_start, interval)
 
     repository = TransferGroupedRepository(session)
 
-    # Read granularity=5 records with interval_start >= rounded_start
-    gran5_rows = await repository.list_for_sources_between(payload.nodes or None, rounded_start, now, granularity=5)
+    # Decide which pre-aggregated granularities to use based on requested interval
+    interval_seconds = int(interval.total_seconds())
 
-    # Find maximum interval_end among granularity=5 rows
+    # Read granularity=5 records with interval_start >= rounded_start only if interval >= 5 minutes
+    gran5_rows: list[TransferGrouped] = []
     gran5_end: datetime | None = None
-    for r in gran5_rows:
-        if gran5_end is None or r.interval_end > gran5_end:
-            gran5_end = r.interval_end
+    if interval_seconds >= 300:  # 5 minutes
+        gran5_rows = await repository.list_for_sources_between(payload.nodes or None, rounded_start, now, granularity=5)
+        # Find maximum interval_end among granularity=5 rows
+        for r in gran5_rows:
+            if gran5_end is None or r.interval_end > gran5_end:
+                gran5_end = r.interval_end
 
-    # If no gran5 rows, gran5_end equals rounded_start
     if gran5_end is None:
         gran5_end = rounded_start
 
-    # Ensure gran5_end is timezone-aware UTC
     if gran5_end.tzinfo is None:
         gran5_end = gran5_end.replace(tzinfo=timezone.utc)
     else:
         gran5_end = gran5_end.astimezone(timezone.utc)
 
-    # Read granularity=1 records with interval_start >= gran5_end
-    gran1_rows = await repository.list_for_sources_between(payload.nodes or None, gran5_end, now, granularity=1)
-
-    # Find maximum interval_end among granularity=1 rows (if any)
+    # Read granularity=1 records with interval_start >= gran5_end only if interval >= 1 minute
+    gran1_rows: list[TransferGrouped] = []
     gran1_end: datetime | None = None
-    for r in gran1_rows:
-        if gran1_end is None or r.interval_end > gran1_end:
-            gran1_end = r.interval_end
+    if interval_seconds >= 60:  # 1 minute
+        gran1_rows = await repository.list_for_sources_between(payload.nodes or None, gran5_end, now, granularity=1)
+        # Find maximum interval_end among granularity=1 rows (if any)
+        for r in gran1_rows:
+            if gran1_end is None or r.interval_end > gran1_end:
+                gran1_end = r.interval_end
 
-    # If no gran1 rows, set gran1_end to gran5_end
     if gran1_end is None:
         gran1_end = gran5_end
 
-    # Ensure gran1_end is timezone-aware UTC
     if gran1_end.tzinfo is None:
         gran1_end = gran1_end.replace(tzinfo=timezone.utc)
     else:
@@ -180,11 +204,9 @@ async def hourly_transfers(
     # Convert Transfer rows into TransferGrouped-like dict objects with same counters
     converted_from_transfers: list[TransferGrouped] = []
     for tr in transfers_since_gran1:
-        # map a single transfer into a TransferGrouped-like object for aggregation
         mode = 'succ' if tr.is_success else 'fail'
         repair = 'rep' if tr.is_repair else 'nor'
 
-        # build a minimal TransferGrouped-like object using TransferGrouped model to reuse attribute access
         tg = TransferGrouped(
             source=tr.source,
             satellite_id=tr.satellite_id,
@@ -211,7 +233,6 @@ async def hourly_transfers(
         )
 
         if tr.action == 'DL':
-            # fields already initialized to 0; assign directly
             setattr(tg, f"size_dl_{mode}_{repair}", tr.size)
             setattr(tg, f"count_dl_{mode}_{repair}", 1)
         else:
@@ -223,18 +244,18 @@ async def hourly_transfers(
     # Combine both grouped lists and converted transfer-derived rows
     all_rows = list(gran5_rows) + list(gran1_rows) + converted_from_transfers
 
-    # Prepare hourly buckets (start from rounded_start up to now), bucket boundaries are full hours
+    # Prepare buckets (start from rounded_start up to now), bucket boundaries are interval-sized
     buckets: dict[datetime, dict[str, int]] = {}
-    # helper to get bucket start for a datetime
-    def bucket_start_for(dt: datetime) -> datetime:
-        # normalize to UTC
+
+    # helper to get bucket start for a datetime given interval
+    def bucket_start_for_interval(dt: datetime) -> datetime:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         else:
             dt = dt.astimezone(timezone.utc)
-        return dt.replace(minute=0, second=0, microsecond=0)
+        return round_down_to_interval(dt, interval)
 
-    # Initialize buckets for each hour boundary from rounded_start up to now
+    # Initialize buckets for each interval boundary from rounded_start up to now
     cur = rounded_start
     while cur < now:
         buckets[cur] = {
@@ -255,23 +276,19 @@ async def hourly_transfers(
             'count_dl_fail_rep': 0,
             'count_ul_fail_rep': 0,
         }
-        cur = cur + timedelta(hours=1)
+        cur = cur + interval
 
     # Aggregate rows into buckets by their interval_start
     for r in all_rows:
-        bs = bucket_start_for(r.interval_start)
+        bs = bucket_start_for_interval(r.interval_start)
         if bs < rounded_start:
-            # ignore older records
             continue
-        # If bucket missing (possible if interval_start is after now), skip
         if bs not in buckets:
             # allow rows that are exactly at 'now' to be clipped into last bucket
-            # compute previous hour bucket
-            prev_bs = (bs.replace(minute=0, second=0, microsecond=0) - timedelta(hours=1))
+            prev_bs = round_down_to_interval(r.interval_start - interval, interval)
             if prev_bs in buckets:
                 bs = prev_bs
             else:
-                # skip if no suitable bucket
                 continue
 
         b = buckets[bs]
@@ -294,24 +311,23 @@ async def hourly_transfers(
         b['count_ul_fail_rep'] += int(r.count_ul_fail_rep or 0)
 
     # Build response buckets list in ascending order
-    bucket_items: list[HourlyTransferBucket] = []
+    bucket_items: list[IntervalTransferBucket] = []
     sorted_starts = sorted(buckets.keys())
     for i, start in enumerate(sorted_starts):
-        end = start + timedelta(hours=1)
+        end = start + interval
         # Clip last bucket end to now
         if end > now:
             end = now
         vals = buckets[start]
         bucket_items.append(
-            HourlyTransferBucket(
+            IntervalTransferBucket(
                 bucket_start=start,
                 bucket_end=end,
                 **vals,
             )
         )
 
-    # Determine overall start_time and end_time for response
     resp_start = rounded_start
     resp_end = now
 
-    return HourlyTransfersResponse(start_time=resp_start, end_time=resp_end, buckets=bucket_items)
+    return IntervalTransferResponse(start_time=resp_start, end_time=resp_end, buckets=bucket_items)

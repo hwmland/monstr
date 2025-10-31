@@ -4,6 +4,7 @@ import ReputationsPanel from "../components/ReputationsPanel";
 import SatelliteTrafficPanel from "../components/SatelliteTrafficPanel";
 import DataSizeDistributionPanel from "../components/DataSizeDistributionPanel";
 import HourlyTrafficPanel from "../components/HourlyTrafficPanel";
+import AccumulatedTrafficPanel from "../components/AccumulatedTrafficPanel";
 import useTransfersActual from "../hooks/useActualPerformancePanel";
 import usePanelVisibilityStore from "../store/usePanelVisibility";
 
@@ -12,6 +13,8 @@ const HomePage = () => {
   const showSatelliteTraffic = isVisible("satelliteTraffic");
   const showActualPerformance = isVisible("actualPerformance");
   const showHourlyTraffic = isVisible("hourlyTraffic");
+  const showDataSizeDistribution = isVisible("dataDistribution");
+  const showAccumulatedTraffic = isVisible("accumulatedTraffic");
   const shouldLoadTransfers = showSatelliteTraffic || showActualPerformance;
   const shouldRenderTransfers = showSatelliteTraffic || showActualPerformance || showHourlyTraffic;
 
@@ -46,11 +49,14 @@ const HomePage = () => {
               />
             ) : null}
           </div>
-
-          {isVisible("dataDistribution") ? (
-            <DataSizeDistributionPanel selectedNodes={selectedNodes} />
-          ) : null}
         </>
+      ) : null}
+
+      {(showDataSizeDistribution || showAccumulatedTraffic) ? (
+        <div className="distribution-panels">
+          {showDataSizeDistribution ? <DataSizeDistributionPanel selectedNodes={selectedNodes} /> : null}
+          {showAccumulatedTraffic ? <AccumulatedTrafficPanel selectedNodes={selectedNodes} /> : null}
+        </div>
       ) : null}
       {isVisible("reputations") ? <ReputationsPanel /> : null}
     </div>

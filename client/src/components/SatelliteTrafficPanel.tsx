@@ -5,7 +5,6 @@ import {
   BarChart,
   CartesianGrid,
   LabelList,
-  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -13,6 +12,7 @@ import {
 } from "recharts";
 
 import type { TransferActualData } from "../types";
+import Legend from "./Legend";
 import { formatWindowTime } from "../utils/time";
 import { formatSizeValue, pickSizeUnit } from "../utils/units";
 
@@ -182,11 +182,15 @@ const SatelliteTrafficPanel: FC<SatelliteTrafficPanelProps> = ({
         ) : null}
 
         {chartData.length > 0 ? (
-          <div className="traffic-chart">
-            <ResponsiveContainer width="100%" height={320}>
-              <BarChart data={chartData} barGap={6} barCategoryGap="20%">
+          <>
+            <div className="traffic-chart">
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={chartData} barGap={6} barCategoryGap="20%" margin={{ bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                <XAxis dataKey="satellite" tick={{ fill: "var(--color-text-muted)", fontSize: 12 }} />
+                <XAxis dataKey="satellite" tick={{ fill: "var(--color-text-muted)", fontSize: 12 }} tickFormatter={(v: any) => {
+                  const s = String(v ?? '');
+                  return s.length > 18 ? `${s.slice(0, 15)}…` : s;
+                }} height={28} />
                 <YAxis
                   tickFormatter={(value: number) => formatValue(value)}
                   width={60}
@@ -210,17 +214,6 @@ const SatelliteTrafficPanel: FC<SatelliteTrafficPanelProps> = ({
                     return [formatted, labelMap[name] ?? name];
                   }}
                   labelFormatter={(label: string) => `Satellite: ${label}`}
-                />
-                <Legend
-                  formatter={(value: string) => {
-                    const legendMap: Record<string, string> = {
-                      downloadNormal: "Download Normal",
-                      downloadRepair: "Download Repair",
-                      uploadNormal: "Upload Normal",
-                      uploadRepair: "Upload Repair",
-                    };
-                    return legendMap[value] ?? value;
-                  }}
                 />
                 <Bar
                   dataKey="downloadNormal"
@@ -250,9 +243,16 @@ const SatelliteTrafficPanel: FC<SatelliteTrafficPanelProps> = ({
                 >
                   <LabelList position="top" content={renderUploadLabel} />
                 </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <Legend items={[
+              { label: 'DL Normal', color: 'rgba(56, 189, 248, 0.85)' },
+              { label: 'DL Repair', color: 'rgba(248, 113, 113, 0.85)' },
+              { label: 'UL Normal', color: 'rgba(52, 211, 153, 0.85)' },
+              { label: 'UL Repair', color: 'rgba(249, 115, 22, 0.85)' },
+            ]} />
+          </>
         ) : null}
 
         {chartData.length > 0 && !hasAnyData ? (

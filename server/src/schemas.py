@@ -282,12 +282,7 @@ class DataDistributionResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-class HourlyTransfersRequest(BaseModel):
-    nodes: list[str] = Field(default_factory=list, description="Nodes to include in aggregation; empty means all nodes.")
-    hours: int = Field(default=6, ge=1, le=168, description="Number of hours backwards from now to include")
-
-
-class HourlyTransferBucket(BaseModel):
+class IntervalTransferBucket(BaseModel):
     bucket_start: datetime = Field(serialization_alias="bucketStart")
     bucket_end: datetime = Field(serialization_alias="bucketEnd")
 
@@ -312,10 +307,18 @@ class HourlyTransferBucket(BaseModel):
     count_ul_fail_rep: int = Field(default=0, serialization_alias="countUlFailRep")
 
 
-class HourlyTransfersResponse(BaseModel):
+class IntervalTransferResponse(BaseModel):
     start_time: datetime = Field(serialization_alias="startTime")
     end_time: datetime = Field(serialization_alias="endTime")
-    buckets: list[HourlyTransferBucket] = Field(serialization_alias="buckets")
+    buckets: list[IntervalTransferBucket] = Field(serialization_alias="buckets")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class IntervalTransfersRequest(BaseModel):
+    nodes: list[str] = Field(default_factory=list, description="Nodes to include in aggregation; empty means all nodes.")
+    interval_length: str = Field(default="1h", description="Interval length string, e.g. '10s','2m','10m','1h'.", validation_alias="intervalLength", serialization_alias="intervalLength")
+    number_of_intervals: int = Field(default=6, ge=1, le=1000, description="Number of intervals to include backwards from now", validation_alias="numberOfIntervals", serialization_alias="numberOfIntervals")
 
     model_config = ConfigDict(populate_by_name=True)
 

@@ -1,7 +1,7 @@
 import type { FC } from "react";
 import { useEffect, useMemo, useState } from "react";
 import usePanelVisibilityStore from "../store/usePanelVisibility";
-import { fetchHourlyTransfers } from "../services/apiClient";
+import { fetchIntervalTransfers } from "../services/apiClient";
 import useSelectedNodesStore from "../store/useSelectedNodes";
 import { formatWindowTime } from "../utils/time";
 import { pickRatePresentation, formatRateValue, pickSizePresentation, formatSizeValue } from "../utils/units";
@@ -45,8 +45,8 @@ const HourlyTrafficPanel: FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const requestNodes = selectedNodes.includes("All") ? [] : selectedNodes;
-  const res = await fetchHourlyTransfers(requestNodes, 8);
+        const requestNodes = selectedNodes.includes("All") ? [] : selectedNodes;
+        const res = await fetchIntervalTransfers(requestNodes, '1h', 8);
       setStartTime(res.startTime ?? null);
       setEndTime(res.endTime ?? null);
       setData(Array.isArray(res.buckets) ? res.buckets : []);

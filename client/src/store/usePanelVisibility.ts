@@ -27,6 +27,7 @@ const DEFAULT_PANELS: Record<string, boolean> = {
   satelliteTraffic: true,
   dataDistribution: true,
   hourlyTransfers: true,
+  accumulatedTraffic: true,
 };
 
 const usePanelVisibilityStore = create<PanelVisibilityState>((set, get) => ({

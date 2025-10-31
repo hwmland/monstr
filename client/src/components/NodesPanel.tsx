@@ -105,6 +105,14 @@ const NodesPanel: FC = () => {
                 <label className="panel-picker__item">
                   <input
                     type="checkbox"
+                    checked={panels.accumulatedTraffic ?? true}
+                    onChange={() => togglePanel("accumulatedTraffic")}
+                  />
+                  <span>Accumulated Traffic</span>
+                </label>
+                <label className="panel-picker__item">
+                  <input
+                    type="checkbox"
                     checked={panels.reputations ?? true}
                     onChange={() => togglePanel("reputations")}
                   />
