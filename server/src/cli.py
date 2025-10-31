@@ -37,12 +37,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--log-level", dest="log_level", help="Override the API log level (info, debug, ...)",
     )
-    parser.add_argument(
-        "--days-offset",
-        dest="days_offset",
-        type=int,
-        help="Days to subtract from current time when aggregating transfer actuals (default: 0)",
-    )
     return parser.parse_args()
 
 
@@ -60,8 +54,7 @@ def build_settings(args: argparse.Namespace) -> Settings:
         overrides["api_port"] = args.port
     if args.log_level:
         overrides["api_log_level"] = args.log_level
-    if getattr(args, "days_offset", None) is not None:
-        overrides["days_offset"] = args.days_offset
+    # days_offset removed; nothing to override
 
     if overrides:
         return base.model_copy(update=overrides)

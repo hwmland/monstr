@@ -2,7 +2,6 @@ import type { FC } from "react";
 import { useEffect, useMemo, useState } from "react";
 import usePanelVisibilityStore from "../store/usePanelVisibility";
 import { fetchIntervalTransfers } from "../services/apiClient";
-// let PanelSubtitle handle formatting so it reacts to preference changes
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { formatSizeValue, pickSizeUnit, pickRateUnit, formatRateValue } from "../utils/units";
 import Legend from "./Legend";
@@ -10,13 +9,13 @@ import PanelSubtitle from "./PanelSubtitle";
 import { use24hTime } from "../utils/time";
 
 type Mode = "size" | "count" | "speed";
-type Range = "5m" | "1h" | "6h" | "25h";
+type Range = "5m" | "1h" | "6h" | "30h";
 
 const RANGE_MAP: Record<Range, { intervalLength: string; numberOfIntervals: number }> = {
   "5m": { intervalLength: "10s", numberOfIntervals: 30 },
   "1h": { intervalLength: "2m", numberOfIntervals: 30 },
   "6h": { intervalLength: "10m", numberOfIntervals: 36 },
-  "25h": { intervalLength: "1h", numberOfIntervals: 25 },
+  "30h": { intervalLength: "1h", numberOfIntervals: 30 },
 };
 
 interface AccumulatedTrafficPanelProps {
@@ -137,7 +136,7 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
                 <button type="button" className={`button button--micro${range === "5m" ? " button--micro-active" : ""}`} onClick={() => setRange("5m")}>5m</button>
                 <button type="button" className={`button button--micro${range === "1h" ? " button--micro-active" : ""}`} onClick={() => setRange("1h")}>1h</button>
                 <button type="button" className={`button button--micro${range === "6h" ? " button--micro-active" : ""}`} onClick={() => setRange("6h")}>6h</button>
-                <button type="button" className={`button button--micro${range === "25h" ? " button--micro-active" : ""}`} onClick={() => setRange("25h")}>25h</button>
+                <button type="button" className={`button button--micro${range === "30h" ? " button--micro-active" : ""}`} onClick={() => setRange("30h")}>30h</button>
               </div>
             </div>
           </div>

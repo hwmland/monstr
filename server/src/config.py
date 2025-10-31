@@ -20,11 +20,15 @@ class Settings(BaseSettings):
     log_sources: List[str] = []
     remote_sources: List[str] = []
     log_batch_size: int = 32
-    days_offset: int = 0
 
     cleanup_interval_seconds: int = 300
     grouping_interval_seconds: int = 120
-    retention_minutes: int = 1440 * 7 * 4 # 4 weeks in minutes
+    # Global default retention (used as a fallback)
+    retention_minutes: int = 1440 * 7 * 4  # 4 weeks in minutes
+    # Per-table retention overrides (in minutes)
+    retention_transfers_minutes: int = 1440  # 1 day in minutes
+    retention_log_entries_minutes: int = 1440 * 7 * 4  # 4 weeks in minutes
+    retention_transfer_grouped_minutes: int = 1440 * 7  # 7 days in minutes
     frontend_dist_dir: Optional[str] = "../client/dist"
     unprocessed_log_dir: str = "../data/"
     cors_allow_origins: List[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
@@ -60,13 +64,6 @@ class Settings(BaseSettings):
             return [item.strip() for item in cleaned.split(",") if item.strip()]
         if isinstance(value, (tuple, set, list)):
             return [str(item).strip() for item in value if str(item).strip()]
-        return value
-
-    @field_validator("days_offset")
-    @classmethod
-    def _validate_offset(cls, value: int) -> int:
-        if value < 0:
-            raise ValueError("days_offset must be non-negative")
         return value
 
     @property
@@ -151,6 +148,28 @@ class Settings(BaseSettings):
     def sanitized_log_sources(self) -> List[Path]:
         """Normalize declared log source paths."""
         return [path for _, path in self.parsed_log_sources]
+
+    def get_retention_minutes(self, table_name: str) -> int:
+        """Return retention in minutes for a given database table.
+
+        Looks for a per-table override attribute on the Settings instance. If no
+        specific override exists, falls back to `retention_minutes`.
+        """
+        key_map = {
+            "transfers": "retention_transfers_minutes",
+            "log_entries": "retention_log_entries_minutes",
+            "transfer_grouped": "retention_transfer_grouped_minutes",
+        }
+
+        attr = key_map.get(table_name)
+        if attr and hasattr(self, attr):
+            value = getattr(self, attr)
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                # Fall through to global fallback if override is invalid
+                pass
+        return int(self.retention_minutes)
 
     @property
     def frontend_path(self) -> Optional[Path]:

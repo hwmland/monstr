@@ -3,14 +3,14 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from .. import database
 from ..config import Settings
-from ..core.time import getVirtualNow
 from ..repositories.log_entries import LogEntryRepository
 from ..repositories.transfers import TransferRepository
+from ..repositories.transfer_grouped import TransferGroupedRepository
 
 logger = logging.getLogger(__name__)
 
@@ -39,19 +39,27 @@ class CleanupService:
 
     async def _run(self) -> None:
         while not self._stop_event.is_set():
-            cutoff = getVirtualNow(self._settings) - timedelta(minutes=self._settings.retention_minutes)
+            # Compute per-table cutoffs using configured per-table or global retention
+            now = datetime.now(timezone.utc)
+            cutoff_logs = now - timedelta(minutes=self._settings.get_retention_minutes("log_entries"))
+            cutoff_transfers = now - timedelta(minutes=self._settings.get_retention_minutes("transfers"))
+            cutoff_grouped = now - timedelta(minutes=self._settings.get_retention_minutes("transfer_grouped"))
             try:
                 async with database.SessionFactory() as session:
                     log_repository = LogEntryRepository(session)
                     transfer_repository = TransferRepository(session)
+                    grouped_repository = TransferGroupedRepository(session)
 
-                    deleted_logs = await log_repository.delete_older_than(cutoff)
-                    deleted_transfers = await transfer_repository.delete_older_than(cutoff)
+                    deleted_logs = await log_repository.delete_older_than(cutoff_logs)
+                    deleted_transfers = await transfer_repository.delete_older_than(cutoff_transfers)
+                    deleted_grouped = await grouped_repository.delete_older_than(cutoff_grouped)
 
                     if deleted_logs:
                         logger.info("Deleted %d expired log entries", deleted_logs)
                     if deleted_transfers:
                         logger.info("Deleted %d expired transfers", deleted_transfers)
+                    if deleted_grouped:
+                        logger.info("Deleted %d expired grouped transfer aggregates", deleted_grouped)
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001

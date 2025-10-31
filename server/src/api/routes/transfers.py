@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import timedelta, timezone
+from datetime import timedelta, timezone, datetime
 from typing import Sequence
 
 from fastapi import APIRouter, Depends, Request
@@ -9,7 +9,6 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...config import Settings
-from ...core.time import getVirtualNow
 from ...database import get_session
 from ...repositories.transfers import TransferRepository
 from ...schemas import (
@@ -49,7 +48,7 @@ async def get_transfer_actuals(
 
     settings: Settings = getattr(request.app.state, "settings")
 
-    end_time = getVirtualNow(settings)
+    end_time = datetime.now(timezone.utc)
     start_time = end_time - timedelta(hours=1)
 
     nodes = sorted({node for node in payload.nodes if node})

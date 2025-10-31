@@ -78,3 +78,17 @@ class TransferGroupedRepository:
 
         stmt = delete(TransferGrouped).where(TransferGrouped.id.in_(ids))
         await self._session.execute(stmt)
+
+    async def delete_older_than(self, cutoff: datetime) -> int:
+        """Delete TransferGrouped rows whose interval_end is older than cutoff.
+
+        Returns the number of rows deleted.
+        """
+        # Import locally to avoid top-level circular import complications in tests
+        from sqlalchemy import delete
+
+        stmt = delete(TransferGrouped).where(TransferGrouped.interval_end < cutoff)
+        result = await self._session.execute(stmt)
+        await self._session.commit()
+        # Some dialects/execution contexts expose rowcount on result
+        return getattr(result, "rowcount", 0) or 0

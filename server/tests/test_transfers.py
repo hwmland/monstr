@@ -8,7 +8,7 @@ from sqlalchemy import delete
 
 from server.src.config import Settings
 from server.src.core.app import create_app
-from server.src.core.time import getVirtualNow
+from datetime import datetime, timezone
 from server.src import database
 from server.src.models import Transfer
 from server.src.repositories.transfers import TransferRepository
@@ -74,12 +74,12 @@ async def test_list_transfers_filters() -> None:
 
 @pytest.mark.asyncio
 async def test_transfer_actuals_aggregates_recent_activity() -> None:
-    app_settings = Settings(log_sources=[], days_offset=3)
+    app_settings = Settings(log_sources=[])
     app = create_app(app_settings)
     await database.init_database()
     transport = ASGITransport(app=app)
 
-    virtual_now = getVirtualNow(app_settings)
+    virtual_now = datetime.now(timezone.utc)
     within_window = virtual_now - timedelta(minutes=10)
     outside_window = virtual_now - timedelta(hours=2)
 
@@ -172,28 +172,32 @@ async def test_transfer_actuals_aggregates_recent_activity() -> None:
     body = response.json()
     assert "startTime" in body and "endTime" in body
 
+    start_time_response = datetime.fromisoformat(body["startTime"])
+    end_time_response = datetime.fromisoformat(body["endTime"])
+    interval_seconds = max((end_time_response - start_time_response).total_seconds(), 1.0)
+
     download = body["download"]
     upload = body["upload"]
 
     assert download["normal"]["operationsTotal"] == 2
     assert download["normal"]["operationsSuccess"] == 1
     assert download["normal"]["dataBytes"] == 2048
-    assert download["normal"]["rate"] == pytest.approx(2048 / 3600)
+    assert download["normal"]["rate"] == pytest.approx(2048 / interval_seconds)
 
     assert download["repair"]["operationsTotal"] == 1
     assert download["repair"]["operationsSuccess"] == 1
     assert download["repair"]["dataBytes"] == 1024
-    assert download["repair"]["rate"] == pytest.approx(1024 / 3600)
+    assert download["repair"]["rate"] == pytest.approx(1024 / interval_seconds)
 
     assert upload["normal"]["operationsTotal"] == 1
     assert upload["normal"]["operationsSuccess"] == 1
     assert upload["normal"]["dataBytes"] == 512
-    assert upload["normal"]["rate"] == pytest.approx(512 / 3600)
+    assert upload["normal"]["rate"] == pytest.approx(512 / interval_seconds)
 
     assert upload["repair"]["operationsTotal"] == 1
     assert upload["repair"]["operationsSuccess"] == 1
     assert upload["repair"]["dataBytes"] == 256
-    assert upload["repair"]["rate"] == pytest.approx(256 / 3600)
+    assert upload["repair"]["rate"] == pytest.approx(256 / interval_seconds)
 
     satellites = sorted(body["satellites"], key=lambda item: item["satelliteId"])
     assert len(satellites) == 2

@@ -7,7 +7,6 @@ from typing import Optional
 
 from .. import database
 from ..config import Settings
-from ..core.time import getVirtualNow
 from datetime import timedelta, datetime, timezone
 from math import floor
 from sqlalchemy import select
@@ -100,7 +99,7 @@ class TransferGroupingService:
             logger.info("No unprocessed transfers found")
             return
 
-        now = self._to_utc(getVirtualNow(self._settings))
+        now = self._to_utc(datetime.now(timezone.utc))
         # If oldest unprocessed transfer is not older than twice the granularity, skip processing
         if self._to_utc(oldest.timestamp) > (now - 2 * gran_delta):
             logger.info("Oldest unprocessed transfer is too recent to process: %s", oldest.timestamp)
@@ -112,7 +111,7 @@ class TransferGroupingService:
         # round end_window down to granularity
         one_hour = timedelta(hours=1)
 
-        now = self._to_utc(getVirtualNow(self._settings))
+        now = self._to_utc(datetime.now(timezone.utc))
         start_window = self._to_utc(oldest.timestamp)
         candidate_end = start_window + one_hour
         limit_end = now - gran_delta
@@ -268,7 +267,7 @@ class TransferGroupingService:
             logger.debug("No grouped records at granularity %d", from_gran)
             return
 
-        now = self._to_utc(getVirtualNow(self._settings))
+        now = self._to_utc(datetime.now(timezone.utc))
         # oldest must be at least min_old_minutes old
         if self._to_utc(oldest.interval_start) > (now - timedelta(minutes=min_old_minutes)):
             logger.info(
