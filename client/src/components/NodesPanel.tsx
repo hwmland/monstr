@@ -1,36 +1,12 @@
 import type { FC } from "react";
 
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import Settings from "./Settings";
 
 import useNodes from "../hooks/useNodes";
-import usePanelVisibilityStore from "../store/usePanelVisibility";
 import useSelectedNodesStore from "../store/useSelectedNodes";
 
 const NodesPanel: FC = () => {
   const { nodes, isLoading, error, refresh } = useNodes();
-  const { panels, togglePanel } = usePanelVisibilityStore();
-  const [isPanelPickerOpen, setPanelPickerOpen] = useState(false);
-  const pickerRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!isPanelPickerOpen) {
-      return;
-    }
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (!pickerRef.current) {
-        return;
-      }
-      if (event.target instanceof Node && pickerRef.current.contains(event.target)) {
-        return;
-      }
-      setPanelPickerOpen(false);
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isPanelPickerOpen]);
   const { toggleNode, isSelected } = useSelectedNodesStore();
 
   const availableNodeNames = nodes.map((node) => node.name);
@@ -48,81 +24,14 @@ const NodesPanel: FC = () => {
           <p className="panel__subtitle">Connected storagenodes available for monitoring.</p>
         </div>
         <div className="panel__actions">
-          <button
-            className="button button--ghost"
-            type="button"
-            onClick={() => setPanelPickerOpen((value) => !value)}
-          >
-            Panels
-          </button>
+          <Settings />
           <button className="button" type="button" onClick={() => refresh()} disabled={isLoading}>
             {isLoading ? "Refreshing…" : "Refresh"}
           </button>
         </div>
       </header>
 
-      {isPanelPickerOpen
-        ? createPortal(
-            <div
-              className="panel-picker-overlay"
-              onMouseDown={() => setPanelPickerOpen(false)}
-              role="dialog"
-              aria-modal="true"
-            >
-              <div className="panel-picker" ref={pickerRef} onMouseDown={(e) => e.stopPropagation()}>
-                <label className="panel-picker__item">
-                  <input
-                    type="checkbox"
-                    checked={panels.satelliteTraffic ?? true}
-                    onChange={() => togglePanel("satelliteTraffic")}
-                  />
-                  <span>Satellite Traffic</span>
-                </label>
-                <label className="panel-picker__item">
-                  <input
-                    type="checkbox"
-                    checked={panels.hourlyTraffic ?? false}
-                    onChange={() => togglePanel("hourlyTraffic")}
-                  />
-                  <span>Hourly Traffic</span>
-                </label>
-                <label className="panel-picker__item">
-                  <input
-                    type="checkbox"
-                    checked={panels.actualPerformance ?? true}
-                    onChange={() => togglePanel("actualPerformance")}
-                  />
-                  <span>Actual Performance</span>
-                </label>
-                <label className="panel-picker__item">
-                  <input
-                    type="checkbox"
-                    checked={panels.dataDistribution ?? true}
-                    onChange={() => togglePanel("dataDistribution")}
-                  />
-                  <span>Data Size Distribution</span>
-                </label>
-                <label className="panel-picker__item">
-                  <input
-                    type="checkbox"
-                    checked={panels.accumulatedTraffic ?? true}
-                    onChange={() => togglePanel("accumulatedTraffic")}
-                  />
-                  <span>Accumulated Traffic</span>
-                </label>
-                <label className="panel-picker__item">
-                  <input
-                    type="checkbox"
-                    checked={panels.reputations ?? true}
-                    onChange={() => togglePanel("reputations")}
-                  />
-                  <span>Reputations</span>
-                </label>
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
+      {/* Settings panel picker is rendered by the Settings component */}
 
       {error ? <p className="panel__error">{error}</p> : null}
 

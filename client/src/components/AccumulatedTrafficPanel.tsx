@@ -2,10 +2,12 @@ import type { FC } from "react";
 import { useEffect, useMemo, useState } from "react";
 import usePanelVisibilityStore from "../store/usePanelVisibility";
 import { fetchIntervalTransfers } from "../services/apiClient";
-import { formatWindowTime } from "../utils/time";
+// let PanelSubtitle handle formatting so it reacts to preference changes
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { formatSizeValue, pickSizeUnit, pickRateUnit, formatRateValue } from "../utils/units";
 import Legend from "./Legend";
+import PanelSubtitle from "./PanelSubtitle";
+import { use24hTime } from "../utils/time";
 
 type Mode = "size" | "count" | "speed";
 type Range = "5m" | "1h" | "6h" | "25h";
@@ -58,9 +60,13 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNodes, mode, range]);
 
-  const windowStart = formatWindowTime(startTime ? String(startTime) : null);
-  const windowEnd = formatWindowTime(endTime ? String(endTime) : null);
-  const nodesLabel = selectedNodes.length === 0 || selectedNodes.includes("All") ? "All nodes" : `Nodes: ${selectedNodes.join(", ")}`;
+  // track effective 24h/12h preference and update when settings change
+  const [system24, setSystem24] = useState<boolean>(() => use24hTime());
+  useEffect(() => {
+    const handler = () => setSystem24(use24hTime());
+    window.addEventListener('pref_time_24h_changed', handler as EventListener);
+    return () => window.removeEventListener('pref_time_24h_changed', handler as EventListener);
+  }, []);
 
   // Prepare data for stacked bar chart: group by bucketStart label
   const chartData = useMemo(() => {
@@ -114,7 +120,7 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
       <header className="panel__header">
         <div>
           <h2 className="panel__title">Accumulated Traffic</h2>
-          <p className="panel__subtitle">Window: {windowStart} – {windowEnd} • {nodesLabel}</p>
+                <PanelSubtitle windowStart={startTime} windowEnd={endTime} selectedNodes={selectedNodes} />
         </div>
         <div className="panel__actions panel__actions--stacked">
           <button className="button" type="button" onClick={load} disabled={loading}>{loading ? "Loading…" : "Refresh"}</button>
@@ -153,8 +159,9 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
                   tick={{ fill: "var(--color-text-muted)", fontSize: 12 }}
                   tickFormatter={(v: any) => {
                     try {
-                      const d = new Date(String(v));
-                      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                      const d = new Date(v);
+                      const hour12 = system24 ? false : true;
+                      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12 } as any);
                     } catch {
                       return String(v);
                     }
@@ -169,11 +176,22 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
                   if (mode === 'speed') return formatRateValue(Number(v) / (displayFactor || 1));
                   return String(v);
                 }} label={{ value: mode === 'size' ? displayUnit : (mode === 'speed' ? displayUnit : 'ops'), angle: -90, position: 'insideLeft', fill: 'var(--color-text-muted)' }} />
-                <Tooltip formatter={(v: number | string) => {
-                  if (mode === 'size') return `${formatSizeValue(Number(v) / (displayFactor || 1))} ${displayUnit}`;
-                  if (mode === 'speed') return `${formatRateValue(Number(v) / (displayFactor || 1))} ${displayUnit}`;
-                  return String(v);
-                }} />
+                <Tooltip
+                  formatter={(v: number | string) => {
+                    if (mode === 'size') return `${formatSizeValue(Number(v) / (displayFactor || 1))} ${displayUnit}`;
+                    if (mode === 'speed') return `${formatRateValue(Number(v) / (displayFactor || 1))} ${displayUnit}`;
+                    return String(v);
+                  }}
+                  labelFormatter={(label: any) => {
+                    try {
+                      const d = new Date(String(label));
+                      const hour12 = system24 ? false : true;
+                      return "At: " + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12 } as any);
+                    } catch {
+                      return String(label);
+                    }
+                  }}
+                />
                 <Bar dataKey="dl" stackId="a" fill="#10784A" name="Download" isAnimationActive={false} />
                 <Bar dataKey="ul" stackId="a" fill="#34D399" name="Upload" isAnimationActive={false} />
                 </BarChart>

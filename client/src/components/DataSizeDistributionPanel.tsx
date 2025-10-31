@@ -14,7 +14,8 @@ import {
 import { fetchDataDistribution } from "../services/apiClient";
 import Legend from "./Legend";
 import { formatSizeValue, pickSizeUnit } from "../utils/units";
-import { formatWindowTime } from "../utils/time";
+// PanelSubtitle will format timestamps according to user preference
+import PanelSubtitle from "./PanelSubtitle";
 
 type Mode = "size" | "count" | "sizePercent" | "countPercent";
 
@@ -54,9 +55,7 @@ const DataSizeDistributionPanel: FC<DataSizeDistributionPanelProps> = ({ selecte
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNodes]);
 
-  const windowStart = formatWindowTime(data?.startTime ?? null);
-  const windowEnd = formatWindowTime(data?.endTime ?? null);
-  const nodesLabel = selectedNodes.length === 0 ? "All nodes" : `Nodes: ${selectedNodes.join(", ")}`;
+  // nodesLabel is computed inside PanelSubtitle
 
   const { downloadData, uploadData, downloadDataPct, uploadDataPct, sizeUnitDl, sizeUnitDlFactor, sizeUnitUl, sizeUnitUlFactor } = useMemo(() => {
     const items = Array.isArray(data?.distribution) ? data.distribution : [];
@@ -235,7 +234,7 @@ const DataSizeDistributionPanel: FC<DataSizeDistributionPanelProps> = ({ selecte
       <header className="panel__header">
         <div>
           <h2 className="panel__title">Data Size Distribution</h2>
-          <p className="panel__subtitle">Window: {windowStart} – {windowEnd} • {nodesLabel}</p>
+          <PanelSubtitle windowStart={data?.startTime} windowEnd={data?.endTime} selectedNodes={selectedNodes} />
         </div>
         <div className="panel__actions panel__actions--stacked">
           <button className="button" type="button" onClick={load} disabled={loading}>{loading ? "Loading…" : "Refresh"}</button>

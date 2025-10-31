@@ -3,8 +3,10 @@ import { useEffect, useMemo, useState } from "react";
 import usePanelVisibilityStore from "../store/usePanelVisibility";
 import { fetchIntervalTransfers } from "../services/apiClient";
 import useSelectedNodesStore from "../store/useSelectedNodes";
-import { formatWindowTime } from "../utils/time";
-import { pickRatePresentation, formatRateValue, pickSizePresentation, formatSizeValue } from "../utils/units";
+// PanelSubtitle will format timestamps according to user preference
+import PanelSubtitle from "./PanelSubtitle";
+import { pickRatePresentation, formatRateValue, formatSizeValue, pickSizePresentation } from "../utils/units";
+import { use24hTime } from "../utils/time";
 import { COLOR_STATUS_GREEN, COLOR_STATUS_YELLOW, COLOR_STATUS_RED } from "../constants/colors";
 
 interface HourlyBucket {
@@ -64,17 +66,25 @@ const HourlyTrafficPanel: FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNodes]);
 
-  const windowStart = formatWindowTime(startTime ? String(startTime) : null);
-  const windowEnd = formatWindowTime(endTime ? String(endTime) : null);
-  const nodesLabel = selectedNodes.includes("All") ? "All nodes" : `Nodes: ${selectedNodes.join(", ")}`;
+  // use centralized helper to compute effective 24h/12h behavior and react to changes
+  const [system24, setSystem24] = useState<boolean>(() => use24hTime());
+
+  useEffect(() => {
+    const handler = () => {
+      setSystem24(use24hTime());
+    };
+    window.addEventListener('pref_time_24h_changed', handler as EventListener);
+    return () => window.removeEventListener('pref_time_24h_changed', handler as EventListener);
+  }, []);
 
   const rows = useMemo(() => {
     if (!data) return [];
     const mapped = data.map((b) => {
       const bs = new Date(b.bucketStart);
       const be = new Date(b.bucketEnd);
-      const hourLabel = bs.toLocaleTimeString([], { hour: '2-digit', hour12: false });
 
+      // format hour-only (no minutes) and respect hour12 preference
+      const hourLabel = bs.toLocaleTimeString([], { hour: '2-digit', hour12: !system24 });
       // compute success rates for DL and UL
       const dlSuccess = (b.countDlSuccNor ?? 0) + (b.countDlSuccRep ?? 0);
       const dlTotal = dlSuccess + (b.countDlFailNor ?? 0) + (b.countDlFailRep ?? 0);
@@ -112,7 +122,7 @@ const HourlyTrafficPanel: FC = () => {
     // sort descending by bucketStart
     mapped.sort((a, b) => b.bucketStart.getTime() - a.bucketStart.getTime());
     return mapped;
-  }, [data]);
+  }, [data, system24]);
 
   const resolveSuccessColor = (percent: number): string => {
     if (percent < 80) {
@@ -129,7 +139,7 @@ const HourlyTrafficPanel: FC = () => {
       <header className="panel__header">
         <div>
           <h2 className="panel__title">Hourly Traffic</h2>
-          <p className="panel__subtitle">Window: {windowStart} – {windowEnd} • {nodesLabel}</p>
+          <PanelSubtitle windowStart={startTime} windowEnd={endTime} selectedNodes={selectedNodes} />
         </div>
         <div className="panel__actions panel__actions--stacked">
           <button className="button" type="button" onClick={load} disabled={loading}>{loading ? "Loading…" : "Refresh"}</button>

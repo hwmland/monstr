@@ -2,7 +2,7 @@ import type { FC } from "react";
 
 import { resolveSuccessColor } from "../utils/colors";
 import type { TransferActualAggregated } from "../types";
-import { formatWindowTime } from "../utils/time";
+import PanelSubtitle from "./PanelSubtitle";
 import {
   formatRateValue,
   formatSizeValue,
@@ -67,11 +67,6 @@ const ActualPerformancePanel: FC<ActualPerformancePanelProps> = ({
   refresh,
   selectedNodes,
 }) => {
-  const windowStart = formatWindowTime(aggregated?.startTime ?? null);
-  const windowEnd = formatWindowTime(aggregated?.endTime ?? null);
-  const nodesLabel = selectedNodes.length === 0
-    ? "All nodes"
-    : `Nodes: ${selectedNodes.join(", ")}`;
 
   const downloadView = buildMetricView(
     aggregated?.download.operationsTotal ?? 0,
@@ -98,9 +93,7 @@ const ActualPerformancePanel: FC<ActualPerformancePanelProps> = ({
       <header className="panel__header">
         <div>
           <h2 className="panel__title">Actual Performance</h2>
-          <p className="panel__subtitle">
-            Window: {windowStart} – {windowEnd} • {nodesLabel}
-          </p>
+          <PanelSubtitle windowStart={aggregated?.startTime} windowEnd={aggregated?.endTime} selectedNodes={selectedNodes} />
         </div>
         <button className="button" type="button" onClick={() => refresh()} disabled={isLoading}>
           {isLoading ? "Loading…" : "Refresh"}

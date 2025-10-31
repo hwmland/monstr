@@ -13,7 +13,8 @@ import {
 
 import type { TransferActualData } from "../types";
 import Legend from "./Legend";
-import { formatWindowTime } from "../utils/time";
+// PanelSubtitle will format timestamps according to user preference
+import PanelSubtitle from "./PanelSubtitle";
 import { formatSizeValue, pickSizeUnit } from "../utils/units";
 
 type SatelliteTrafficMode = "size" | "count";
@@ -51,9 +52,7 @@ const SatelliteTrafficPanel: FC<SatelliteTrafficPanelProps> = ({
   selectedNodes,
 }) => {
   const [mode, setMode] = useState<SatelliteTrafficMode>("size");
-  const windowStart = formatWindowTime(data?.startTime ?? null);
-  const windowEnd = formatWindowTime(data?.endTime ?? null);
-  const nodesLabel = selectedNodes.length === 0 ? "All nodes" : `Nodes: ${selectedNodes.join(", ")}`;
+  // nodesLabel is computed inside PanelSubtitle now
 
   const { chartData, sizeUnit } = useMemo(() => {
     const satellites = data?.satellites ?? [];
@@ -143,9 +142,7 @@ const SatelliteTrafficPanel: FC<SatelliteTrafficPanelProps> = ({
       <header className="panel__header">
         <div>
           <h2 className="panel__title">Satellite Traffic</h2>
-          <p className="panel__subtitle">
-            Window: {windowStart} – {windowEnd} • {nodesLabel}
-          </p>
+          <PanelSubtitle windowStart={data?.startTime} windowEnd={data?.endTime} selectedNodes={selectedNodes} />
         </div>
         <div className="panel__actions panel__actions--stacked">
           <button className="button" type="button" onClick={() => refresh()} disabled={isLoading}>
