@@ -318,3 +318,48 @@ class HourlyTransfersResponse(BaseModel):
     buckets: list[HourlyTransferBucket] = Field(serialization_alias="buckets")
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+class OverallStatusRequest(BaseModel):
+    nodes: list[str] = Field(default_factory=list, description="Nodes to include; empty means all nodes")
+
+
+class TransferWindowMetrics(BaseModel):
+    download_size: int = Field(default=0, serialization_alias="downloadSize")
+    upload_size: int = Field(default=0, serialization_alias="uploadSize")
+    download_count: int = Field(default=0, serialization_alias="downloadCount")
+    upload_count: int = Field(default=0, serialization_alias="uploadCount")
+    download_count_total: int = Field(default=0, serialization_alias="downloadCountTotal")
+    upload_count_total: int = Field(default=0, serialization_alias="uploadCountTotal")
+    download_success_rate: float = Field(default=0.0, serialization_alias="downloadSuccessRate")
+    upload_success_rate: float = Field(default=0.0, serialization_alias="uploadSuccessRate")
+    download_speed: float = Field(default=0.0, serialization_alias="downloadSpeed")
+    upload_speed: float = Field(default=0.0, serialization_alias="uploadSpeed")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class NodeOverallMetrics(BaseModel):
+    node: str = Field(..., description="Node name")
+
+    # reputation aggregates
+    min_online: float = Field(default=0.0, serialization_alias="minOnline")
+    min_audit: float = Field(default=0.0, serialization_alias="minAudit")
+    min_suspension: float = Field(default=0.0, serialization_alias="minSuspension")
+    avg_online: float = Field(default=0.0, serialization_alias="avgOnline")
+    avg_audit: float = Field(default=0.0, serialization_alias="avgAudit")
+    avg_suspension: float = Field(default=0.0, serialization_alias="avgSuspension")
+
+    # transfer windows
+    minute1: TransferWindowMetrics = Field(default_factory=TransferWindowMetrics)
+    minute3: TransferWindowMetrics = Field(default_factory=TransferWindowMetrics)
+    minute5: TransferWindowMetrics = Field(default_factory=TransferWindowMetrics)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class OverallStatusResponse(BaseModel):
+    total: NodeOverallMetrics
+    nodes: list[NodeOverallMetrics] = Field(default_factory=list)
+
+    model_config = ConfigDict(populate_by_name=True)

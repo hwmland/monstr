@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from ..api.routes import health, logs, nodes, reputations, transfer_grouped, transfers
+from ..api.routes import health, logs, nodes, reputations, transfer_grouped, transfers, overall_status
 from ..config import Settings
 from ..database import configure_database, init_database
 from ..services.cleanup import CleanupService
@@ -73,6 +73,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(reputations.router)
     app.include_router(transfer_grouped.router)
     app.include_router(transfers.router)
+    app.include_router(overall_status.router)
 
     frontend_path = settings.frontend_path
     if frontend_path and frontend_path.exists():

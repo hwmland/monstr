@@ -13,6 +13,7 @@ from ...schemas import HourlyTransfersRequest, HourlyTransfersResponse, HourlyTr
 from datetime import datetime, timezone, timedelta
 from ...models import TransferGrouped
 from sqlalchemy import select, func
+from ...repositories.transfers import TransferRepository
 
 router = APIRouter(prefix="/api/transfer-grouped", tags=["transfer-grouped"])
 
@@ -156,8 +157,71 @@ async def hourly_transfers(
     # Read granularity=1 records with interval_start >= gran5_end
     gran1_rows = await repository.list_for_sources_between(payload.nodes or None, gran5_end, now, granularity=1)
 
-    # Combine both lists
-    all_rows = list(gran5_rows) + list(gran1_rows)
+    # Find maximum interval_end among granularity=1 rows (if any)
+    gran1_end: datetime | None = None
+    for r in gran1_rows:
+        if gran1_end is None or r.interval_end > gran1_end:
+            gran1_end = r.interval_end
+
+    # If no gran1 rows, set gran1_end to gran5_end
+    if gran1_end is None:
+        gran1_end = gran5_end
+
+    # Ensure gran1_end is timezone-aware UTC
+    if gran1_end.tzinfo is None:
+        gran1_end = gran1_end.replace(tzinfo=timezone.utc)
+    else:
+        gran1_end = gran1_end.astimezone(timezone.utc)
+
+    # Read raw Transfer rows from gran1_end up to now to capture most recent activity
+    transfer_repo = TransferRepository(session)
+    transfers_since_gran1 = await transfer_repo.list_for_sources_between(payload.nodes or None, gran1_end, now)
+
+    # Convert Transfer rows into TransferGrouped-like dict objects with same counters
+    converted_from_transfers: list[TransferGrouped] = []
+    for tr in transfers_since_gran1:
+        # map a single transfer into a TransferGrouped-like object for aggregation
+        mode = 'succ' if tr.is_success else 'fail'
+        repair = 'rep' if tr.is_repair else 'nor'
+
+        # build a minimal TransferGrouped-like object using TransferGrouped model to reuse attribute access
+        tg = TransferGrouped(
+            source=tr.source,
+            satellite_id=tr.satellite_id,
+            interval_start=tr.timestamp,
+            interval_end=tr.timestamp,
+            size_class="",
+            granularity=1,
+            size_dl_succ_nor=0,
+            size_ul_succ_nor=0,
+            size_dl_fail_nor=0,
+            size_ul_fail_nor=0,
+            size_dl_succ_rep=0,
+            size_ul_succ_rep=0,
+            size_dl_fail_rep=0,
+            size_ul_fail_rep=0,
+            count_dl_succ_nor=0,
+            count_ul_succ_nor=0,
+            count_dl_fail_nor=0,
+            count_ul_fail_nor=0,
+            count_dl_succ_rep=0,
+            count_ul_succ_rep=0,
+            count_dl_fail_rep=0,
+            count_ul_fail_rep=0,
+        )
+
+        if tr.action == 'DL':
+            # fields already initialized to 0; assign directly
+            setattr(tg, f"size_dl_{mode}_{repair}", tr.size)
+            setattr(tg, f"count_dl_{mode}_{repair}", 1)
+        else:
+            setattr(tg, f"size_ul_{mode}_{repair}", tr.size)
+            setattr(tg, f"count_ul_{mode}_{repair}", 1)
+
+        converted_from_transfers.append(tg)
+
+    # Combine both grouped lists and converted transfer-derived rows
+    all_rows = list(gran5_rows) + list(gran1_rows) + converted_from_transfers
 
     # Prepare hourly buckets (start from rounded_start up to now), bucket boundaries are full hours
     buckets: dict[datetime, dict[str, int]] = {}

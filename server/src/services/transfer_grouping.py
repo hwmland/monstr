@@ -140,35 +140,17 @@ class TransferGroupingService:
             # compute interval start aligned to granularity using helper
             ts = tr.timestamp
             interval_start = self._round_down_to_granularity(ts, gran_minutes)
-            interval_end = interval_start + gran_delta
+            # store the transfer object only; interval bounds are derived from the key
             key = (tr.source, tr.satellite_id, interval_start)
-            buckets.setdefault(key, []).append((tr, interval_start, interval_end))
+            buckets.setdefault(key, []).append(tr)
 
         created: list[TransferGrouped] = []
         processed_ids: list[int] = []
 
         for (source, satellite_id, interval_start), entries in buckets.items():
-            # initialize counters
-            agg = {
-                'size_dl_succ_nor': 0,
-                'size_ul_succ_nor': 0,
-                'size_dl_fail_nor': 0,
-                'size_ul_fail_nor': 0,
-                'size_dl_succ_rep': 0,
-                'size_ul_succ_rep': 0,
-                'size_dl_fail_rep': 0,
-                'size_ul_fail_rep': 0,
-                'count_dl_succ_nor': 0,
-                'count_ul_succ_nor': 0,
-                'count_dl_fail_nor': 0,
-                'count_ul_fail_nor': 0,
-                'count_dl_succ_rep': 0,
-                'count_ul_succ_rep': 0,
-                'count_dl_fail_rep': 0,
-                'count_ul_fail_rep': 0,
-            }
-            size_class = ""
-            for tr, i_start, i_end in entries:
+            # bucket entries by size_class so we create one TransferGrouped per size class
+            size_buckets: dict[str, dict] = {}
+            for tr in entries:
                 # determine size class as human-friendly string:
                 # 1K, 4K, 16K, 64K, 256K, 1M, big (>1M)
                 size = tr.size
@@ -187,11 +169,31 @@ class TransferGroupingService:
                 else:
                     size_class = 'big'
 
-                prefix = 'size_' if tr.action == 'DL' else 'size_ul_' if tr.action == 'UL' else 'size_'
+                # ensure agg container exists for this size_class
+                if size_class not in size_buckets:
+                    size_buckets[size_class] = {
+                        'size_dl_succ_nor': 0,
+                        'size_ul_succ_nor': 0,
+                        'size_dl_fail_nor': 0,
+                        'size_ul_fail_nor': 0,
+                        'size_dl_succ_rep': 0,
+                        'size_ul_succ_rep': 0,
+                        'size_dl_fail_rep': 0,
+                        'size_ul_fail_rep': 0,
+                        'count_dl_succ_nor': 0,
+                        'count_ul_succ_nor': 0,
+                        'count_dl_fail_nor': 0,
+                        'count_ul_fail_nor': 0,
+                        'count_dl_succ_rep': 0,
+                        'count_ul_succ_rep': 0,
+                        'count_dl_fail_rep': 0,
+                        'count_ul_fail_rep': 0,
+                    }
+
                 mode = 'succ' if tr.is_success else 'fail'
                 repair = 'rep' if tr.is_repair else 'nor'
 
-                # map to the correct key in agg
+                # map to the correct key in the per-size_class agg
                 if tr.action == 'DL':
                     key_sum = f"size_dl_{mode}_{repair}"
                     key_count = f"count_dl_{mode}_{repair}"
@@ -199,20 +201,22 @@ class TransferGroupingService:
                     key_sum = f"size_ul_{mode}_{repair}"
                     key_count = f"count_ul_{mode}_{repair}"
 
-                agg[key_sum] += tr.size
-                agg[key_count] += 1
+                size_buckets[size_class][key_sum] += tr.size
+                size_buckets[size_class][key_count] += 1
                 processed_ids.append(tr.id)
 
-            tg = TransferGrouped(
-                source=source,
-                satellite_id=satellite_id,
-                interval_start=interval_start,
-                interval_end=interval_start + gran_delta,
-                size_class=size_class,
-                granularity=gran_minutes,
-                **agg,
-            )
-            created.append(tg)
+            # create a TransferGrouped per size_class
+            for sc, agg in size_buckets.items():
+                tg = TransferGrouped(
+                    source=source,
+                    satellite_id=satellite_id,
+                    interval_start=interval_start,
+                    interval_end=interval_start + gran_delta,
+                    size_class=sc,
+                    granularity=gran_minutes,
+                    **agg,
+                )
+                created.append(tg)
 
         # persist created grouped records and mark the source transfers processed.
         # The outer `async with database.SessionFactory()` already manages a transaction
@@ -317,44 +321,45 @@ class TransferGroupingService:
         promoted_ids: list[int] = []
 
         for (source, satellite_id, interval_start), entries in buckets.items():
-            # aggregate numeric fields; TransferGrouped has many counters — sum any int fields
-            agg_fields = {
-                'size_dl_succ_nor': 0,
-                'size_ul_succ_nor': 0,
-                'size_dl_fail_nor': 0,
-                'size_ul_fail_nor': 0,
-                'size_dl_succ_rep': 0,
-                'size_ul_succ_rep': 0,
-                'size_dl_fail_rep': 0,
-                'size_ul_fail_rep': 0,
-                'count_dl_succ_nor': 0,
-                'count_ul_succ_nor': 0,
-                'count_dl_fail_nor': 0,
-                'count_ul_fail_nor': 0,
-                'count_dl_succ_rep': 0,
-                'count_ul_succ_rep': 0,
-                'count_dl_fail_rep': 0,
-                'count_ul_fail_rep': 0,
-            }
-            size_class = ""
+            # aggregate numeric fields per size_class so promotions preserve size buckets
+            size_buckets: dict[str, dict] = {}
             for ent in entries:
                 promoted_ids.append(ent.id)
-                # prefer the largest size_class seen (heuristic); store last non-empty
-                if ent.size_class:
-                    size_class = ent.size_class
-                for k in list(agg_fields.keys()):
-                    agg_fields[k] += getattr(ent, k, 0) or 0
+                sc = ent.size_class or ""
+                if sc not in size_buckets:
+                    size_buckets[sc] = {
+                        'size_dl_succ_nor': 0,
+                        'size_ul_succ_nor': 0,
+                        'size_dl_fail_nor': 0,
+                        'size_ul_fail_nor': 0,
+                        'size_dl_succ_rep': 0,
+                        'size_ul_succ_rep': 0,
+                        'size_dl_fail_rep': 0,
+                        'size_ul_fail_rep': 0,
+                        'count_dl_succ_nor': 0,
+                        'count_ul_succ_nor': 0,
+                        'count_dl_fail_nor': 0,
+                        'count_ul_fail_nor': 0,
+                        'count_dl_succ_rep': 0,
+                        'count_ul_succ_rep': 0,
+                        'count_dl_fail_rep': 0,
+                        'count_ul_fail_rep': 0,
+                    }
+                for k in list(size_buckets[sc].keys()):
+                    size_buckets[sc][k] += getattr(ent, k, 0) or 0
 
-            tg = TransferGrouped(
-                source=source,
-                satellite_id=satellite_id,
-                interval_start=interval_start,
-                interval_end=interval_start + to_delta,
-                size_class=size_class,
-                granularity=to_gran,
-                **agg_fields,
-            )
-            created.append(tg)
+            # create a TransferGrouped per size_class
+            for sc, agg_fields in size_buckets.items():
+                tg = TransferGrouped(
+                    source=source,
+                    satellite_id=satellite_id,
+                    interval_start=interval_start,
+                    interval_end=interval_start + to_delta,
+                    size_class=sc,
+                    granularity=to_gran,
+                    **agg_fields,
+                )
+                created.append(tg)
 
         # persist new grouped rows and delete old ones
         grouped_repo._session.add_all(created)
