@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import logging
+from server.src.core.logging import get_logger
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -12,7 +12,7 @@ from ..repositories.log_entries import LogEntryRepository
 from ..repositories.transfers import TransferRepository
 from ..repositories.transfer_grouped import TransferGroupedRepository
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class CleanupService:

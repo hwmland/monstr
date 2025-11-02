@@ -87,56 +87,192 @@ The repository includes a multi-stage Dockerfile that builds the Vite client and
 
 ### Build the Image
 
-```powershell
+````powershell
 docker build -t monstr .
-```
+# Monstr
 
-The build performs these steps:
+Monstr is a full-stack log monitoring platform. The asynchronous FastAPI backend tails multiple log files, persists new lines into SQLite, and exposes a REST API. The React + TypeScript frontend renders the stored data today and is prepared for WebSocket streaming in the future.
 
-- installs Node.js dependencies and compiles the client into `client/dist`
-- creates a Python virtual environment, installs the backend dependencies, and copies the server code
-- assembles a final `python:3.11-slim` image containing the API, background workers, and built static assets
+## Highlights
 
-### Run the Container
+- Async tailing of multiple log files
+- Automatic database bootstrap and configurable data retention
+- REST API under `/api` for querying logs, transfers and derived aggregates
+- The Python backend can serve a production build of the React frontend
 
-When running the container you must expose the logs you want to monitor and declare them via the `MONSTR_LOG_SOURCES` environment variable. The value accepts a comma-separated list of `NAME:/absolute/path/to/log.log` entries.
+## Project layout
+
+- `server/` – FastAPI app, background workers, database models and tests
+- `client/` – Vite + React SPA (TypeScript) with charts and UI
+
+## Requirements
+
+- Python 3.11+
+- Node.js 18+
+
+## Quickstart (backend)
+
+These instructions assume you work from the repository root (the top-level `monstr/` folder).
+
+Windows PowerShell
 
 ```powershell
-docker run ^
-	-p 8000:8000 ^
-	-e MONSTR_LOG_SOURCES="hashnode:/logs/hash.log,blobnode:/logs/blob.log" ^
-	-v ${PWD}\testdata:/logs:ro ^
-	monstr
+cd server
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+cd ..
+````
+
+macOS / Linux / WSL
+
+```bash
+cd server
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cd ..
 ```
 
-The container listens on port 8000 and automatically serves the compiled frontend at `/` and the API at `/api`.
+Run the CLI (example)
 
-### Example docker-compose.yml
+```powershell
+# from the project root
+python -m server.src.cli --node Hashnode:.\testdata\hash.log --node Blobnode:.\testdata\blob.log --log-level info
+```
+
+Notes
+
+- Node entries are provided as NAME:PATH so database records keep a stable logical name rather than a filesystem path.
+- The API OpenAPI docs are available at `http://127.0.0.1:8000/api/docs` when the server is running.
+
+## CLI & logging configuration
+
+Monstr's CLI accepts both environment-based and CLI-based logging overrides so you can control logger levels at startup. The rules are:
+
+- Environment variable: `MONSTR_LOG_OVERRIDES` — a comma-separated list of `LOGGER:LEVEL` entries.
+- CLI flag: `--log LOGGER:LEVEL` — a repeatable argument; CLI-provided overrides take precedence over the environment.
+
+Examples (PowerShell)
+
+```powershell
+$env:MONSTR_LOG_OVERRIDES = "root:INFO,services.cleanup:WARNING"
+python -m server.src.cli --node Hashnode:.\testdata\hash.log
+
+# CLI overrides (these win for the named loggers)
+python -m server.src.cli --node Hashnode:.\testdata\hash.log --log services.cleanup:DEBUG --log api:INFO
+```
+
+Docker / docker-compose example
 
 ```yaml
 services:
 	monstr:
-		image: monstr:latest
+		image: ghcr.io/hwmland/monstr:latest
 		ports:
 			- "8000:8000"
 		environment:
 			MONSTR_LOG_SOURCES: "hashnode:/logs/hash.log,blobnode:/logs/blob.log"
-			MONSTR_API_LOG_LEVEL: "info"
+			MONSTR_LOG_OVERRIDES: "root:INFO,services.cleanup:WARNING"
 		volumes:
 			- ./testdata:/logs:ro
+		command: ["python","-m","server.src.cli","--node","Hashnode:/logs/hash.log","--node","Blobnode:/logs/blob.log","--log","services.cleanup:DEBUG"]
 ```
 
-Start the stack with:
+The CLI will normalize formatters so the console output includes timestamps and the logger name (for example, `2025-11-02 12:34:56,789 root: Message...`).
+
+## Request-finish debug logging (api.call)
+
+Monstr includes a small request-finish middleware that can emit a concise DEBUG
+message whenever an HTTP request completes. The message contains the client
+address, HTTP method, full path (including query), response status code and
+duration in milliseconds.
+
+This behavior is controlled solely by the `api.call` logger. To enable the
+messages, set `api.call` to `DEBUG` using any of the supported mechanisms
+(environment/CLI/admin API). For example, use the admin API to set the logger at
+runtime:
+
+```http
+POST /api/admin/loggers
+Content-Type: application/json
+
+{ "name": "api.call", "level": "DEBUG" }
+```
+
+To disable, set the logger back to `INFO` (or your preferred level):
+
+```http
+POST /api/admin/loggers
+Content-Type: application/json
+
+{ "name": "api.call", "level": "INFO" }
+```
+
+Alternatively, set the logger at startup with `MONSTR_LOG_OVERRIDES` or the
+CLI `--log` flag (CLI wins over environment values).
+
+Notes:
+
+- The middleware is always registered but checks the `api.call` logger's
+  level for DEBUG each request, so toggles take effect immediately.
+- We chose logger-level gating instead of a separate runtime setting so you can
+  use existing logging controls to manage verbosity without adding another
+  configuration surface.
+
+## Testing
+
+Server tests are written with pytest and live under `server/src/tests`. Run them from the project root so imports resolve correctly:
+
+PowerShell
+
+```powershell
+$env:PYTHONPATH = "."
+pytest -q
+```
+
+macOS / Linux
 
 ```bash
-docker compose up --build
+PYTHONPATH=. pytest -q
 ```
 
-The compose file mounts the sample logs under `/logs` (read-only) and instructs the container to ingest them using the `MONSTR_LOG_SOURCES` declaration.
+Client (frontend)
 
-## Next Steps
+```powershell
+cd client
+npm install
+npm run dev    # development server (Vite)
+npm run build  # build production assets
+npm test       # run Vitest
+```
 
-- Define the concrete parsing rules in `server/src/services/log_monitor.py`.
-- Extend the REST API with richer filtering or aggregation endpoints.
-- Wire up WebSocket broadcasting on the backend and consume it via `client/src/services/socketClient.ts`.
-- Automate data retention parameters through configuration or UI controls.
+When you run the production backend and the client has been built (`client/dist` exists), FastAPI will serve the compiled SPA at `/` automatically.
+
+## Docker image
+
+The repository contains a multi-stage `Dockerfile` that builds the client and bundles it with the Python runtime.
+
+Build the image locally
+
+```powershell
+docker build -t monstr .
+```
+
+Run the container with sample logs mounted (PowerShell example)
+
+```powershell
+docker run `
+	-p 8000:8000 `
+	-e MONSTR_LOG_SOURCES="hashnode:/logs/hash.log,blobnode:/logs/blob.log" `
+	-v ${PWD}\testdata:/logs:ro `
+	ghcr.io/hwmland/monstr:latest
+```
+
+## Development notes and next steps
+
+- The log parsing logic lives in `server/src/services/log_monitor.py` and can be extended to support additional formats.
+- The cleanup/retention settings are configurable in the server configuration; see `server/src/config.py`.
+- Frontend charting uses Recharts and has a centralized time-format preference stored in localStorage under the key `pref_time_24h`.
+
+Contributions and issues are welcome — open a PR or file an issue with a reproducible example.

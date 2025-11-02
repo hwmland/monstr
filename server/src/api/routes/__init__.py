@@ -1,4 +1,4 @@
-from . import health, logs, nodes, reputations, transfer_grouped, transfers, overall_status
+from . import health, logs, nodes, reputations, transfer_grouped, transfers, overall_status, loggers
 
 __all__ = [
 	"health",
@@ -8,4 +8,5 @@ __all__ = [
 	"transfer_grouped",
 	"transfers",
 	"overall_status",
+	"loggers",
 ]

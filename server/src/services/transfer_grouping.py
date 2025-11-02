@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import logging
+from server.src.core.logging import get_logger
 from typing import Optional
 
 from .. import database
@@ -14,7 +14,7 @@ from ..models import Transfer, TransferGrouped
 from ..repositories.transfers import TransferRepository
 from ..repositories.transfer_grouped import TransferGroupedRepository
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class TransferGroupingService:

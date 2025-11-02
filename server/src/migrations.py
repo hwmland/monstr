@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from server.src.core.logging import get_logger
 
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Connection
@@ -8,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from . import models
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 def _create_schema_version_table(conn: Connection) -> None:
     conn.execute(

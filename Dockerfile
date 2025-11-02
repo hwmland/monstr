@@ -22,6 +22,15 @@ RUN apt-get update \
 COPY server /app/server
 
 FROM python:3.11-slim AS runtime
+
+# Image metadata (OCI labels)
+# - org.opencontainers.image.description: short description of the image
+# - org.opencontainers.licenses: SPDX license identifier
+# - org.opencontainers.source: URL to the source repository
+LABEL org.opencontainers.image.description="Monstr - Monitor STORJ by logfiles"
+LABEL org.opencontainers.licenses="MIT"
+LABEL org.opencontainers.source="https://github.com/hwmland/monstr"
+
 ENV VIRTUAL_ENV=/opt/venv
 COPY --from=server-builder "$VIRTUAL_ENV" "$VIRTUAL_ENV"
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"

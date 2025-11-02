@@ -6,6 +6,7 @@ from typing import Sequence
 
 from fastapi import APIRouter, Depends, Request
 import logging
+from server.src.core.logging import get_logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...config import Settings
@@ -23,7 +24,7 @@ from ...schemas import (
 
 router = APIRouter(prefix="/api/transfers", tags=["transfers"])
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @router.get("", response_model=list[TransferRead], tags=["raw"])

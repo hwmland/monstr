@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-import logging
+from server.src.core.logging import get_logger
 import os
 import re
 from dataclasses import dataclass
@@ -21,7 +21,7 @@ from ..repositories.reputations import ReputationRepository
 from ..repositories.transfers import TransferRepository
 from ..schemas import LogEntryCreate, ReputationCreate, TransferCreate
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 ALLOWED_LEVELS = {"DEBUG", "INFO", "WARN", "ERROR"}
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+from server.src.core.logging import get_logger
 import logging.config
 from typing import Any, Dict
 
@@ -13,7 +14,7 @@ from copy import deepcopy
 from .config import Settings
 from .core.app import create_app
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
@@ -36,6 +37,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--port", dest="port", type=int, help="API port binding override")
     parser.add_argument(
         "--log-level", dest="log_level", help="Override the API log level (info, debug, ...)",
+    )
+    parser.add_argument(
+        "--log",
+        dest="log_overrides",
+        action="append",
+        default=[],
+        help="Per-logger override in NAME:LEVEL form (repeatable). CLI overrides take precedence over MONSTR_LOG_OVERRIDES.",
     )
     return parser.parse_args()
 
@@ -83,6 +91,78 @@ def main() -> None:
             },
         )
         logger_cfg["level"] = desired_level
+
+    # Ensure timestamps and logger name appear before the colored level prefix
+    # Normalize formatter strings: if a formatter contains either %(levelprefix)s
+    # (uvicorn's colored level) or %(levelname)s, prefix it with %(asctime)s and
+    # ensure the logger name appears before the message as "%(name)s: %(message)s".
+    import time
+
+    # Use UTC for asctime in log output
+    logging.Formatter.converter = time.gmtime
+
+    # Use seconds plus milliseconds in the printed timestamp. The Formatter
+    # will insert milliseconds via %(msecs)03d; the datefmt therefore only
+    # needs to include the seconds part.
+    asctime_token = "%(asctime)s.%(msecs)03d"
+    datefmt = "%Y-%m-%d %H:%M:%S"
+
+    for fmt in log_config.get("formatters", {}).values():
+        try:
+            fmt_str = fmt.get("fmt")
+        except Exception:
+            fmt_str = None
+        if not fmt_str:
+            continue
+        # If formatter already contains asctime and name, skip
+        if ("%(asctime)s" in fmt_str or asctime_token in fmt_str) and "%(name)s" in fmt_str:
+            fmt.setdefault("datefmt", datefmt)
+            continue
+
+        # Many uvicorn/uvloop formatters use %(levelprefix)s or %(levelname)s and
+        # may not include %(message)s. For those we prefix or rewrite the
+        # formatter so the visible output begins with a UTC timestamp and the
+        # logger name.
+        if "%(message)s" in fmt_str:
+            # only add asctime if not already present
+            if "%(asctime)s" not in fmt_str and asctime_token not in fmt_str:
+                fmt_str = asctime_token + " " + fmt_str
+
+            # ensure logger name appears before the message
+            if "%(name)s" not in fmt_str:
+                fmt_str = fmt_str.replace("%(message)s", "%(name)s: %(message)s")
+        elif "%(levelprefix)s" in fmt_str or "%(levelname)s" in fmt_str:
+            level_token = "%(levelprefix)s" if "%(levelprefix)s" in fmt_str else "%(levelname)s"
+
+            # Remove first occurrence of the level token and any following spaces
+            parts = fmt_str.split(level_token, 1)
+            # parts -> [before, after]
+            after = parts[1].lstrip() if len(parts) > 1 else ""
+            prefix = asctime_token + " " + level_token + " %(name)s: "
+            fmt_str = prefix + parts[0].rstrip() + (" " + after if after else "")
+
+        fmt["fmt"] = fmt_str
+        # set a reasonable date format
+        fmt.setdefault("datefmt", datefmt)
+
+    # Apply environment and CLI logger level overrides.
+    # MONSTR_LOG_OVERRIDES is a comma-separated list like: "sqlalchemy.engine:WARNING,server:DEBUG"
+    import os
+
+    env_overrides = os.getenv("MONSTR_LOG_OVERRIDES", "")
+    if env_overrides:
+        for pair in [p.strip() for p in env_overrides.split(",") if p.strip()]:
+            if ":" not in pair:
+                continue
+            name, level = pair.split(":", 1)
+            log_config["loggers"].setdefault(name, {})["level"] = level.upper()
+
+    # CLI overrides (args.log_overrides) take precedence
+    for pair in (args.log_overrides or []):
+        if ":" not in pair:
+            continue
+        name, level = pair.split(":", 1)
+        log_config["loggers"].setdefault(name, {})["level"] = level.upper()
 
     logging.config.dictConfig(log_config)
 
