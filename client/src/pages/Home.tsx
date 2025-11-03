@@ -1,43 +1,65 @@
-import useLogEntries from "../hooks/useLogEntries";
+import ActualPerformancePanel from "../components/ActualPerformancePanel";
+import NodesPanel from "../components/NodesPanel";
+import ReputationsPanel from "../components/ReputationsPanel";
+import SatelliteTrafficPanel from "../components/SatelliteTrafficPanel";
+import DataSizeDistributionPanel from "../components/DataSizeDistributionPanel";
+import HourlyTrafficPanel from "../components/HourlyTrafficPanel";
+import AccumulatedTrafficPanel from "../components/AccumulatedTrafficPanel";
+import useTransfersActual from "../hooks/useActualPerformancePanel";
+import usePanelVisibilityStore from "../store/usePanelVisibility";
 
 const HomePage = () => {
-  const { entries, isLoading, error, refresh } = useLogEntries();
+  const { isVisible } = usePanelVisibilityStore();
+  const showSatelliteTraffic = isVisible("satelliteTraffic");
+  const showActualPerformance = isVisible("actualPerformance");
+  const showHourlyTraffic = isVisible("hourlyTraffic");
+  const showDataSizeDistribution = isVisible("dataDistribution");
+  const showAccumulatedTraffic = isVisible("accumulatedTraffic");
+  const shouldLoadTransfers = showSatelliteTraffic || showActualPerformance;
+  const shouldRenderTransfers = showSatelliteTraffic || showActualPerformance || showHourlyTraffic;
+
+  const { data, aggregated, isLoading, error, refresh, selectedNodes } = useTransfersActual({
+    enabled: shouldLoadTransfers,
+  });
 
   return (
-    <section className="page">
-      <header className="page-header">
-        <h1>Log Entries</h1>
-        <button type="button" onClick={() => refresh()} disabled={isLoading}>
-          Refresh
-        </button>
-      </header>
+    <div className="page">
+      <NodesPanel />
+      {shouldRenderTransfers ? (
+        <>
+          <div className="transfer-panels">
+            {showSatelliteTraffic ? (
+              <SatelliteTrafficPanel
+                data={data}
+                isLoading={isLoading}
+                error={error}
+                refresh={refresh}
+                selectedNodes={selectedNodes}
+              />
+            ) : null}
+            {showHourlyTraffic ? <HourlyTrafficPanel /> : null}
 
-      {error && <p className="error">{error}</p>}
-      {isLoading ? (
-        <p>Loading…</p>
-      ) : (
-        <table className="log-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Source</th>
-              <th>Content</th>
-              <th>Ingested</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map((entry) => (
-              <tr key={entry.id}>
-                <td>{entry.id}</td>
-                <td>{entry.source}</td>
-                <td>{entry.content}</td>
-                <td>{new Date(entry.ingestedAt).toLocaleString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </section>
+            {showActualPerformance ? (
+              <ActualPerformancePanel
+                aggregated={aggregated}
+                isLoading={isLoading}
+                error={error}
+                refresh={refresh}
+                selectedNodes={selectedNodes}
+              />
+            ) : null}
+          </div>
+        </>
+      ) : null}
+
+      {(showDataSizeDistribution || showAccumulatedTraffic) ? (
+        <div className="distribution-panels">
+          {showDataSizeDistribution ? <DataSizeDistributionPanel selectedNodes={selectedNodes} /> : null}
+          {showAccumulatedTraffic ? <AccumulatedTrafficPanel selectedNodes={selectedNodes} /> : null}
+        </div>
+      ) : null}
+      {isVisible("reputations") ? <ReputationsPanel /> : null}
+    </div>
   );
 };
 

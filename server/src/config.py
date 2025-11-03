@@ -1,6 +1,7 @@
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,11 +18,20 @@ class Settings(BaseSettings):
 
     log_poll_interval: float = 1.0
     log_sources: List[str] = []
+    remote_sources: List[str] = []
     log_batch_size: int = 32
 
     cleanup_interval_seconds: int = 300
-    retention_minutes: int = 1440
+    grouping_interval_seconds: int = 120
+    # Global default retention (used as a fallback)
+    retention_minutes: int = 1440 * 7 * 4  # 4 weeks in minutes
+    # Per-table retention overrides (in minutes)
+    retention_transfers_minutes: int = 1440  # 1 day in minutes
+    retention_log_entries_minutes: int = 1440 * 7 * 4  # 4 weeks in minutes
+    retention_transfer_grouped_minutes: int = 1440 * 7  # 7 days in minutes
     frontend_dist_dir: Optional[str] = "../client/dist"
+    unprocessed_log_dir: str = "../data/"
+    cors_allow_origins: List[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
     model_config = SettingsConfigDict(
         env_prefix="MONSTR_",
@@ -29,6 +39,32 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @field_validator("log_sources", mode="before")
+    @classmethod
+    def _coerce_log_sources(cls, value):
+        """Allow comma or newline separated env strings for log sources."""
+        if value in (None, ""):
+            return []
+        if isinstance(value, str):
+            cleaned = value.replace("\n", ",")
+            return [item.strip() for item in cleaned.split(",") if item.strip()]
+        if isinstance(value, (tuple, set, list)):
+            return [str(item).strip() for item in value if str(item).strip()]
+        return value
+
+    @field_validator("remote_sources", mode="before")
+    @classmethod
+    def _coerce_remote_sources(cls, value):
+        """Allow comma or newline separated env strings for remote sources."""
+        if value in (None, ""):
+            return []
+        if isinstance(value, str):
+            cleaned = value.replace("\n", ",")
+            return [item.strip() for item in cleaned.split(",") if item.strip()]
+        if isinstance(value, (tuple, set, list)):
+            return [str(item).strip() for item in value if str(item).strip()]
+        return value
 
     @property
     def database_path(self) -> Path:
@@ -39,9 +75,101 @@ class Settings(BaseSettings):
         raise ValueError("Database URL is not pointing to a SQLite database")
 
     @property
+    def parsed_log_sources(self) -> List[Tuple[str, Path]]:
+        """Normalize declared log node specifications into name/path tuples."""
+        parsed: List[Tuple[str, Path]] = []
+        for raw in self.log_sources:
+            try:
+                node_name, path_spec = raw.split(":", 1)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid node specification '{raw}'. Expected format NAME:PATH."
+                ) from exc
+
+            node_name = node_name.strip()
+            path_spec = path_spec.strip()
+
+            if not node_name:
+                raise ValueError(f"Node specification '{raw}' is missing a node name.")
+            if len(node_name) > 32:
+                raise ValueError(
+                    f"Node specification '{raw}' has a node name longer than 32 characters."
+                )
+            if not path_spec:
+                raise ValueError(f"Node specification '{raw}' is missing a log path.")
+
+            path = Path(path_spec).expanduser().resolve()
+            parsed.append((node_name, path))
+
+        return parsed
+
+    @property
+    def parsed_remote_sources(self) -> List[Tuple[str, str, int]]:
+        """Normalize declared remote node specifications into name/host/port tuples."""
+        parsed: List[Tuple[str, str, int]] = []
+        for raw in self.remote_sources:
+            try:
+                node_name, host, port_spec = raw.split(":", 2)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid remote specification '{raw}'. Expected format NAME:HOST:PORT."
+                ) from exc
+
+            node_name = node_name.strip()
+            host = host.strip()
+            port_spec = port_spec.strip()
+
+            if not node_name:
+                raise ValueError(f"Remote specification '{raw}' is missing a node name.")
+            if len(node_name) > 32:
+                raise ValueError(
+                    f"Remote specification '{raw}' has a node name longer than 32 characters."
+                )
+            if not host:
+                raise ValueError(f"Remote specification '{raw}' is missing a host name.")
+
+            try:
+                port = int(port_spec)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Remote specification '{raw}' has an invalid port '{port_spec}'."
+                ) from exc
+
+            if port <= 0 or port > 65535:
+                raise ValueError(
+                    f"Remote specification '{raw}' has a port outside the valid range (1-65535)."
+                )
+
+            parsed.append((node_name, host, port))
+
+        return parsed
+
+    @property
     def sanitized_log_sources(self) -> List[Path]:
         """Normalize declared log source paths."""
-        return [Path(source).expanduser().resolve() for source in self.log_sources]
+        return [path for _, path in self.parsed_log_sources]
+
+    def get_retention_minutes(self, table_name: str) -> int:
+        """Return retention in minutes for a given database table.
+
+        Looks for a per-table override attribute on the Settings instance. If no
+        specific override exists, falls back to `retention_minutes`.
+        """
+        key_map = {
+            "transfers": "retention_transfers_minutes",
+            "log_entries": "retention_log_entries_minutes",
+            "transfer_grouped": "retention_transfer_grouped_minutes",
+        }
+
+        attr = key_map.get(table_name)
+        if attr and hasattr(self, attr):
+            value = getattr(self, attr)
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                # Fall through to global fallback if override is invalid
+                pass
+        return int(self.retention_minutes)
 
     @property
     def frontend_path(self) -> Optional[Path]:
@@ -53,4 +181,14 @@ class Settings(BaseSettings):
         if not candidate.is_absolute():
             base_dir = Path(__file__).resolve().parent.parent
             candidate = (base_dir / candidate).resolve()
+        return candidate
+
+    @property
+    def unprocessed_log_directory(self) -> Path:
+        """Directory where unprocessed log lines will be recorded."""
+        candidate = Path(self.unprocessed_log_dir)
+        if not candidate.is_absolute():
+            base_dir = Path(__file__).resolve().parent.parent
+            candidate = (base_dir / candidate).resolve()
+        candidate.mkdir(parents=True, exist_ok=True)
         return candidate

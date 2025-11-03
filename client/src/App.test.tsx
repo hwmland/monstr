@@ -12,8 +12,12 @@ const renderApp = () =>
   );
 
 describe("App", () => {
-  it("renders the heading", () => {
+  it("renders the nodes panel heading", () => {
     renderApp();
-    expect(screen.getByRole("heading", { name: /log entries/i })).toBeInTheDocument();
+    const heading = screen.getByRole("heading", {
+      name: /monitor storj nodes by hwm\.land/i
+    });
+
+    expect(heading).toBeTruthy();
   });
 });

@@ -24,3 +24,4 @@ server/.ruff_cache/
 
 # Data
 data/
+testdata/
