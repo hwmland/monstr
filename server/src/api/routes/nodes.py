@@ -19,8 +19,18 @@ def get_settings(request: Request) -> Settings:
 async def list_nodes(settings: Settings = Depends(get_settings)) -> list[NodeConfig]:
     """Return the configured log nodes with their resolved log paths."""
     nodes = []
-    for name, path in settings.parsed_log_sources:
-        nodes.append(NodeConfig(name=name, path=str(path)))
-    for name, host, port in settings.parsed_remote_sources:
-        nodes.append(NodeConfig(name=name, path=f"tcp://{host}:{port}"))
+    # Only the unified `sources` list is supported. Map file vs remote entries
+    # directly and preserve the declared order. Malformed entries are ignored.
+    for raw in (settings.sources or []):
+        parts = raw.split(":")
+        if len(parts) == 3:
+            name, host, port = parts
+            nodes.append(NodeConfig(name=name.strip(), path=f"tcp://{host.strip()}:{port.strip()}"))
+            continue
+        if ":" in raw:
+            name, path = raw.split(":", 1)
+            nodes.append(NodeConfig(name=name.strip(), path=path.strip()))
+            continue
+        # ignore malformed entries
+
     return nodes

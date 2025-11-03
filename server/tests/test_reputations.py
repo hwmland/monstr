@@ -16,7 +16,7 @@ from server.src.schemas import ReputationCreate
 
 @pytest.mark.asyncio
 async def test_list_reputations_empty() -> None:
-    app = create_app(Settings(log_sources=[]))
+    app = create_app(Settings(sources=[]))
     await database.init_database()
     transport = ASGITransport(app=app)
 
@@ -33,7 +33,7 @@ async def test_list_reputations_empty() -> None:
 
 @pytest.mark.asyncio
 async def test_list_reputations_filters() -> None:
-    app = create_app(Settings(log_sources=[]))
+    app = create_app(Settings(sources=[]))
     payload = ReputationCreate(
         source="node-a",
         satellite_id="sat-1",
@@ -76,7 +76,7 @@ async def test_list_reputations_filters() -> None:
 
 @pytest.mark.asyncio
 async def test_list_reputations_panel_grouped_by_node() -> None:
-    app = create_app(Settings(log_sources=[]))
+    app = create_app(Settings(sources=[]))
     timestamp = datetime.now(timezone.utc)
 
     records = [
@@ -143,7 +143,7 @@ async def test_list_reputations_panel_grouped_by_node() -> None:
 
 @pytest.mark.asyncio
 async def test_list_reputations_panel_includes_empty_nodes() -> None:
-    app = create_app(Settings(log_sources=[]))
+    app = create_app(Settings(sources=[]))
     timestamp = datetime.now(timezone.utc)
 
     record = ReputationCreate(
@@ -182,7 +182,7 @@ async def test_list_reputations_panel_includes_empty_nodes() -> None:
 
 @pytest.mark.asyncio
 async def test_list_reputations_panel_fetch_all_when_empty_request() -> None:
-    app = create_app(Settings(log_sources=[]))
+    app = create_app(Settings(sources=[]))
     timestamp = datetime.now(timezone.utc)
 
     records = [

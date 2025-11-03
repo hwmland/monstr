@@ -14,7 +14,7 @@ from server.src.schemas import TransferGroupedCreate
 
 @pytest.mark.asyncio
 async def test_list_transfer_grouped_filters() -> None:
-    app_settings = Settings(log_sources=[])
+    app_settings = Settings(sources=[])
     app = create_app(app_settings)
     await database.init_database(app_settings)
     transport = ASGITransport(app=app)

@@ -17,8 +17,10 @@ class Settings(BaseSettings):
     sql_echo: bool = False
 
     log_poll_interval: float = 1.0
-    log_sources: List[str] = []
-    remote_sources: List[str] = []
+    # Unified ordered sources. Each entry may be NAME:PATH (file) or
+    # NAME:HOST:PORT (remote). This is the single canonical place to declare
+    # configured nodes and preserves the declared sequence.
+    sources: List[str] = []
     log_batch_size: int = 32
 
     cleanup_interval_seconds: int = 300
@@ -40,23 +42,10 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    @field_validator("log_sources", mode="before")
+    @field_validator("sources", mode="before")
     @classmethod
-    def _coerce_log_sources(cls, value):
-        """Allow comma or newline separated env strings for log sources."""
-        if value in (None, ""):
-            return []
-        if isinstance(value, str):
-            cleaned = value.replace("\n", ",")
-            return [item.strip() for item in cleaned.split(",") if item.strip()]
-        if isinstance(value, (tuple, set, list)):
-            return [str(item).strip() for item in value if str(item).strip()]
-        return value
-
-    @field_validator("remote_sources", mode="before")
-    @classmethod
-    def _coerce_remote_sources(cls, value):
-        """Allow comma or newline separated env strings for remote sources."""
+    def _coerce_sources(cls, value):
+        """Allow comma or newline separated env strings for mixed sources."""
         if value in (None, ""):
             return []
         if isinstance(value, str):
@@ -73,81 +62,6 @@ class Settings(BaseSettings):
             raw_path = self.database_url.split("///", maxsplit=1)[-1]
             return Path(raw_path).expanduser().resolve()
         raise ValueError("Database URL is not pointing to a SQLite database")
-
-    @property
-    def parsed_log_sources(self) -> List[Tuple[str, Path]]:
-        """Normalize declared log node specifications into name/path tuples."""
-        parsed: List[Tuple[str, Path]] = []
-        for raw in self.log_sources:
-            try:
-                node_name, path_spec = raw.split(":", 1)
-            except ValueError as exc:
-                raise ValueError(
-                    f"Invalid node specification '{raw}'. Expected format NAME:PATH."
-                ) from exc
-
-            node_name = node_name.strip()
-            path_spec = path_spec.strip()
-
-            if not node_name:
-                raise ValueError(f"Node specification '{raw}' is missing a node name.")
-            if len(node_name) > 32:
-                raise ValueError(
-                    f"Node specification '{raw}' has a node name longer than 32 characters."
-                )
-            if not path_spec:
-                raise ValueError(f"Node specification '{raw}' is missing a log path.")
-
-            path = Path(path_spec).expanduser().resolve()
-            parsed.append((node_name, path))
-
-        return parsed
-
-    @property
-    def parsed_remote_sources(self) -> List[Tuple[str, str, int]]:
-        """Normalize declared remote node specifications into name/host/port tuples."""
-        parsed: List[Tuple[str, str, int]] = []
-        for raw in self.remote_sources:
-            try:
-                node_name, host, port_spec = raw.split(":", 2)
-            except ValueError as exc:
-                raise ValueError(
-                    f"Invalid remote specification '{raw}'. Expected format NAME:HOST:PORT."
-                ) from exc
-
-            node_name = node_name.strip()
-            host = host.strip()
-            port_spec = port_spec.strip()
-
-            if not node_name:
-                raise ValueError(f"Remote specification '{raw}' is missing a node name.")
-            if len(node_name) > 32:
-                raise ValueError(
-                    f"Remote specification '{raw}' has a node name longer than 32 characters."
-                )
-            if not host:
-                raise ValueError(f"Remote specification '{raw}' is missing a host name.")
-
-            try:
-                port = int(port_spec)
-            except ValueError as exc:
-                raise ValueError(
-                    f"Remote specification '{raw}' has an invalid port '{port_spec}'."
-                ) from exc
-
-            if port <= 0 or port > 65535:
-                raise ValueError(
-                    f"Remote specification '{raw}' has a port outside the valid range (1-65535)."
-                )
-
-            parsed.append((node_name, host, port))
-
-        return parsed
-
-    @property
-    def sanitized_log_sources(self) -> List[Path]:
-        """Normalize declared log source paths."""
-        return [path for _, path in self.parsed_log_sources]
 
     def get_retention_minutes(self, table_name: str) -> int:
         """Return retention in minutes for a given database table.

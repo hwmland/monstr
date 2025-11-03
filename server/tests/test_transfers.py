@@ -17,7 +17,7 @@ from server.src.schemas import TransferCreate
 
 @pytest.mark.asyncio
 async def test_list_transfers_empty() -> None:
-    app = create_app(Settings(log_sources=[]))
+    app = create_app(Settings(sources=[]))
     await database.init_database()
     transport = ASGITransport(app=app)
 
@@ -34,7 +34,7 @@ async def test_list_transfers_empty() -> None:
 
 @pytest.mark.asyncio
 async def test_list_transfers_filters() -> None:
-    app = create_app(Settings(log_sources=[]))
+    app = create_app(Settings(sources=[]))
     payload = TransferCreate(
         source="node-a",
         timestamp=datetime.now(timezone.utc),
@@ -74,7 +74,7 @@ async def test_list_transfers_filters() -> None:
 
 @pytest.mark.asyncio
 async def test_transfer_actuals_aggregates_recent_activity() -> None:
-    app_settings = Settings(log_sources=[])
+    app_settings = Settings(sources=[])
     app = create_app(app_settings)
     await database.init_database()
     transport = ASGITransport(app=app)

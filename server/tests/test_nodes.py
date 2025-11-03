@@ -9,13 +9,13 @@ from server.src.core.app import create_app
 
 @pytest.mark.asyncio
 async def test_list_nodes_returns_configured_sources(tmp_path) -> None:
-    test_settings = Settings(log_sources=[])
+    test_settings = Settings(sources=[])
     app = create_app(test_settings)
     app.state.settings = test_settings
     transport = ASGITransport(app=app)
 
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        app.state.settings.log_sources = [
+        app.state.settings.sources = [
             f"alpha:{tmp_path / 'alpha.log'}",
             f"beta:{tmp_path / 'beta.log'}",
         ]

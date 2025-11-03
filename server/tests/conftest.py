@@ -16,7 +16,7 @@ def isolated_database(tmp_path, monkeypatch):
 
     test_settings = Settings(
         database_url=database_url,
-        log_sources=[],
+        sources=[],
         unprocessed_log_dir=str(tmp_path / "unprocessed"),
     )
     configure_database(test_settings)

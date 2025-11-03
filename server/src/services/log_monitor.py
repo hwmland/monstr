@@ -83,35 +83,62 @@ class LogMonitorService:
         self._unprocessed_prefix = "unprocessed"
 
     async def start(self) -> None:
-        if not self._settings.log_sources and not self._settings.remote_sources:
+        # If no sources are configured, warn and return
+        if not getattr(self._settings, "sources", None):
             logger.warning("Log monitoring started without any nodes configured.")
             return
 
+        # Prefer an ordered mixed sources declaration if provided. The
+        # Settings implementation exposes `sources` (mixed list) which allows the
+        # user to define local and remote nodes in the desired sequence. If that
+        # isn't present, fall back to the separate parsed lists.
         try:
-            file_nodes = self._settings.parsed_log_sources
-            remote_nodes = self._settings.parsed_remote_sources
+            if getattr(self._settings, "sources", None):
+                # Iterate declared sources and start watchers in order. Each raw
+                # source may be either NAME:PATH (file) or NAME:HOST:PORT (remote).
+                for raw in self._settings.sources:
+                    # attempt remote parsing first (NAME:HOST:PORT)
+                    parts = raw.split(":")
+                    if len(parts) == 3:
+                        node_name, host, port_spec = parts
+                        node_name = node_name.strip()
+                        host = host.strip()
+                        port = int(port_spec.strip())
+                        logger.info(
+                            "Starting remote watcher for node '%s' at %s:%d",
+                            node_name,
+                            host,
+                            port,
+                        )
+                        task = asyncio.create_task(
+                            self._watch_remote(node_name, host, port),
+                            name=f"remote-watch:{node_name}",
+                        )
+                        self._tasks.append(task)
+                        continue
+
+                    # otherwise treat as file node NAME:PATH
+                    if ":" in raw:
+                        node_name, path_spec = raw.split(":", 1)
+                        node_name = node_name.strip()
+                        from pathlib import Path
+
+                        path = Path(path_spec.strip()).expanduser().resolve()
+                        logger.info(
+                            "Starting file watcher for node '%s' at %s", node_name, path
+                        )
+                        task = asyncio.create_task(
+                            self._watch_file(node_name, path), name=f"log-watch:{node_name}"
+                        )
+                        self._tasks.append(task)
+                        continue
+
+                    logger.warning("Ignoring invalid source declaration: %s", raw)
+            # The logic above handles starting watchers from the ordered
+            # `sources` list; there is no fallback to legacy separate lists.
         except ValueError as exc:
             logger.error("Failed to parse node configuration: %s", exc)
             return
-
-        if not file_nodes and not remote_nodes:
-            logger.warning("No valid log or remote nodes resolved from configuration.")
-            return
-
-        for node_name, path in file_nodes:
-            logger.info("Starting file watcher for node '%s' at %s", node_name, path)
-            task = asyncio.create_task(
-                self._watch_file(node_name, path), name=f"log-watch:{node_name}"
-            )
-            self._tasks.append(task)
-
-        for node_name, host, port in remote_nodes:
-            logger.info("Starting remote watcher for node '%s' at %s:%d", node_name, host, port)
-            task = asyncio.create_task(
-                self._watch_remote(node_name, host, port),
-                name=f"remote-watch:{node_name}",
-            )
-            self._tasks.append(task)
 
     async def stop(self) -> None:
         self._stopping.set()

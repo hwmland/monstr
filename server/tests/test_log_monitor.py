@@ -11,7 +11,7 @@ from server.src.services.log_monitor import LogMonitorService
 
 @pytest.mark.asyncio
 async def test_collector_info_entries_are_persisted(tmp_path) -> None:
-    settings = Settings(log_sources=[], unprocessed_log_dir=str(tmp_path))
+    settings = Settings(sources=[], unprocessed_log_dir=str(tmp_path))
     service = LogMonitorService(settings)
 
     raw_line = (
@@ -33,7 +33,7 @@ async def test_collector_info_entries_are_persisted(tmp_path) -> None:
 
 @pytest.mark.asyncio
 async def test_reputation_service_emits_reputation_payload(tmp_path) -> None:
-    settings = Settings(log_sources=[], unprocessed_log_dir=str(tmp_path))
+    settings = Settings(sources=[], unprocessed_log_dir=str(tmp_path))
     service = LogMonitorService(settings)
 
     details = json.dumps(
@@ -70,7 +70,7 @@ async def test_reputation_service_emits_reputation_payload(tmp_path) -> None:
 
 @pytest.mark.asyncio
 async def test_reputation_service_missing_fields_skips_reputation(tmp_path) -> None:
-    settings = Settings(log_sources=[], unprocessed_log_dir=str(tmp_path))
+    settings = Settings(sources=[], unprocessed_log_dir=str(tmp_path))
     service = LogMonitorService(settings)
 
     details = json.dumps(
@@ -94,7 +94,7 @@ async def test_reputation_service_missing_fields_skips_reputation(tmp_path) -> N
 
 @pytest.mark.asyncio
 async def test_unprocessed_records_written_per_node(tmp_path) -> None:
-    settings = Settings(log_sources=[], unprocessed_log_dir=str(tmp_path))
+    settings = Settings(sources=[], unprocessed_log_dir=str(tmp_path))
     service = LogMonitorService(settings)
 
     await service._record_unprocessed("alpha", "first line")
