@@ -9,7 +9,7 @@ from server.src.config import Settings
 
 @pytest.mark.asyncio
 async def test_healthcheck() -> None:
-    app = create_app(Settings(log_sources=[]))
+    app = create_app(Settings(sources=[]))
 
     transport = ASGITransport(app=app)
 

@@ -16,7 +16,7 @@ from server.src.schemas import LogEntryCreate
 
 @pytest.mark.asyncio
 async def test_list_logs_supports_additional_filters(tmp_path) -> None:
-    settings = Settings(log_sources=[], unprocessed_log_dir=str(tmp_path))
+    settings = Settings(sources=[], unprocessed_log_dir=str(tmp_path))
     app = create_app(settings)
 
     await database.init_database()

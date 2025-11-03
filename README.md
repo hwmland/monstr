@@ -54,14 +54,14 @@ PowerShell (Windows):
 
 ```powershell
 # from the project root with the virtual environment still activated
-python -m server.src.cli --node myNode:.\testdata\node.log --node otherNode:C:\path\to\node2.log
+python -m server.src.cli --source myNode:.\testdata\node.log --source otherNode:C:\path\to\node2.log
 ```
 
 Bash (macOS / Linux):
 
 ```bash
 # from the project root with the virtual environment activated
-python -m server.src.cli --node myNode:./testdata/node.log --node otherNode:/path/to/node2.log
+python -m server.src.cli --source myNode:./testdata/node.log --source otherNode:/path/to/node2.log
 ```
 
 Node specifications follow the `NAME:PATH` pattern so each database record references the logical node name instead of the filesystem path. Below is a compact reference for the CLI, environment overrides, and examples showing how to run the server.
@@ -74,22 +74,21 @@ PowerShell (Windows):
 
 ```powershell
 # from the project root with the virtual environment activated
-python -m server.src.cli --node myNode:.\testdata\node.log --node otherNode:C:\path\to\node2.log
+python -m server.src.cli --source myNode:.\testdata\node.log --source otherNode:C:\path\to\node2.log
 ```
 
 Bash (macOS / Linux / WSL):
 
 ```bash
 # from the project root with the virtual environment activated
-python -m server.src.cli --node myNode:./testdata/node.log --node otherNode:/path/to/node2.log
+python -m server.src.cli --source myNode:./testdata/node.log --source otherNode:/path/to/node2.log
 ```
 
 Supported CLI flags
 
-- `--node NAME:PATH` (repeatable) — Tell Monstr to monitor a local log file. Each `NAME:PATH` pair creates a logical node with the given NAME and watches the filesystem path for appended lines. Repeat the flag to monitor multiple files.
-- `--remote NAME:HOST:PORT` (repeatable) — Monitor a remote log source that streams log lines over TCP. The server will connect to the given HOST:PORT and treat the source as a node named NAME.
+- `--source NAME:SPEC` (repeatable) — Declare a log source in the preferred sequence. Use `NAME:PATH` for local log files or `NAME:HOST:PORT` for remote TCP sources. Repeat the flag to declare multiple sources; their declared order is preserved at startup.
 
-  Implementation note: you can use the companion project `hwmland/tailsender` as a lightweight remote sender that tails a file and forwards appended lines to Monstr over TCP. Configure a tailsender instance on the remote host and point Monstr at it with `--remote name:host:port`.
+  Implementation note: you can use the companion project `hwmland/tailsender` as a lightweight remote sender that tails a file and forwards appended lines to Monstr over TCP. Configure a tailsender instance on the remote host and point Monstr at it with `--source name:host:port`.
 
 - `--host HOST` — Bind the API server to the specified host (default: `127.0.0.1`). Setting `--host 0.0.0.0` (or `--host ::`) makes the API listen on all network interfaces so the server becomes reachable from other machines on the network. Use this when running inside a container or when exposing the API to other hosts. Beware that binding to all interfaces exposes the API to your network; secure the host appropriately (firewall, auth) if used in production.
 - `--port PORT` — Bind the API server to the specified port (default: `8000`).
@@ -106,24 +105,24 @@ PowerShell (Windows) example that sets two nodes and enables the request-finish 
 
 ```powershell
 python -m server.src.cli \
-	--node Hashnode:.\testdata\hash.log \
-	--node Blobnode:.\testdata\blob.log \
-	--host 0.0.0.0 \
-	--port 8000 \
-	--log-level info \
-	--log api.call:DEBUG
+  --source Hashnode:.\testdata\hash.log \
+  --source Blobnode:.\testdata\blob.log \
+  --host 0.0.0.0 \
+  --port 8000 \
+  --log-level info \
+  --log api.call:DEBUG
 ```
 
 Bash (macOS / Linux) equivalent:
 
 ```bash
 python -m server.src.cli \
-	--node Hashnode:./testdata/hash.log \
-	--node Blobnode:./testdata/blob.log \
-	--host 0.0.0.0 \
-	--port 8000 \
-	--log-level info \
-	--log api.call:DEBUG
+  --source Hashnode:./testdata/hash.log \
+  --source Blobnode:./testdata/blob.log \
+  --host 0.0.0.0 \
+  --port 8000 \
+  --log-level info \
+  --log api.call:DEBUG
 ```
 
 ### Request-finish debug logging (api.call)
@@ -243,35 +242,35 @@ Run the container with sample logs mounted (example binds port 8000 and mounts a
 PowerShell (Windows):
 
 ```powershell
-docker run `
-	-p 8000:8000 `
-	-e MONSTR_LOG_SOURCES="hashnode:/logs/hash.log,blobnode:/logs/blob.log" `
-	-v ${PWD}\testdata:/logs:ro `
-	monstr:latest
+docker run
+  -p 8000:8000 \
+  -e MONSTR_SOURCES="hashnode:/logs/hash.log,blobnode:/logs/blob.log" \
+  -v ${PWD}\testdata:/logs:ro \
+  monstr:latest
 ```
 
 Bash (macOS / Linux / WSL):
 
 ```bash
 docker run -p 8000:8000 \
-	-e MONSTR_LOG_SOURCES="hashnode:/logs/hash.log,blobnode:/logs/blob.log" \
-	-v ${PWD}/testdata:/logs:ro \
-	monstr:latest
+  -e MONSTR_SOURCES="hashnode:/logs/hash.log,blobnode:/logs/blob.log" \
+  -v ${PWD}/testdata:/logs:ro \
+  monstr:latest
 ```
 
 Docker Compose example (service runs the CLI and sets logger overrides):
 
 ```yaml
 services:
-	monstr:
-		image: ghcr.io/hwmland/monstr:latest
-		ports:
-			- "8000:8000"
-		environment:
-			MONSTR_LOG_SOURCES: "hashnode:/logs/hash.log,blobnode:/logs/blob.log"
-			MONSTR_LOG_OVERRIDES: "root:INFO,services.cleanup:WARNING"
-		volumes:
-			- ./testdata:/logs:ro
+  monstr:
+    image: ghcr.io/hwmland/monstr:latest
+    ports:
+      - "8000:8000"
+    environment:
+  MONSTR_SOURCES="hashnode:/logs/hash.log,blobnode:/logs/blob.log"
+      MONSTR_LOG_OVERRIDES="root:INFO,services.cleanup:WARNING"
+    volumes:
+      - ./testdata:/logs:ro
 ```
 
 ## Development notes and next steps
