@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import List, Optional, Tuple
+import json
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -20,7 +21,11 @@ class Settings(BaseSettings):
     # Unified ordered sources. Each entry may be NAME:PATH (file) or
     # NAME:HOST:PORT (remote). This is the single canonical place to declare
     # configured nodes and preserves the declared sequence.
-    sources: List[str] = []
+    # Accept either a raw string (from env like "a:b,c:d") or a list; the
+    # validator below will coerce into a List[str]. Declaring the union with
+    # `str | List[str]` prevents pydantic-settings from attempting JSON
+    # decoding on simple comma-separated env strings.
+    sources: str | List[str] = []
     log_batch_size: int = 32
 
     cleanup_interval_seconds: int = 300
@@ -49,6 +54,17 @@ class Settings(BaseSettings):
         if value in (None, ""):
             return []
         if isinstance(value, str):
+            v = value.strip()
+            # If the string is a JSON array (e.g. '["a","b"]'), decode it
+            # first so callers can set MONSTR_SOURCES to a JSON array in envs.
+            if v.startswith("[") or v.startswith("{"):
+                try:
+                    decoded = json.loads(v)
+                    if isinstance(decoded, (list, tuple, set)):
+                        return [str(item).strip() for item in decoded if str(item).strip()]
+                except Exception:
+                    # fall back to comma/newline splitting below
+                    pass
             cleaned = value.replace("\n", ",")
             return [item.strip() for item in cleaned.split(",") if item.strip()]
         if isinstance(value, (tuple, set, list)):
