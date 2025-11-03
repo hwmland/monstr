@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import time
 from server.src.core.logging import get_logger
 from typing import Optional
 
@@ -64,10 +65,17 @@ class TransferGroupingService:
                     transfer_repo = TransferRepository(session)
                     grouped_repo = TransferGroupedRepository(session)
 
-                    # Process transfers into 1-minute grouped aggregates.
+                    # Process transfers into 1-minute grouped aggregates and time it.
+                    t0 = time.time()
                     await self._process_batch(transfer_repo, grouped_repo)
-                    # Promote 1-minute groups into 5-minute groups when possible.
+                    t1 = time.time()
+                    logger.info("TransferGroupingService: process batch completed in %.2fms", (t1 - t0) * 1000.0)
+
+                    # Promote 1-minute groups into 5-minute groups when possible and time it.
+                    t0 = time.time()
                     await self._promote_groups(grouped_repo, from_gran=1, to_gran=5, min_old_minutes=120, newest_threshold_minutes=90)
+                    t1 = time.time()
+                    logger.info("TransferGroupingService: promote groups completed in %.2fms", (t1 - t0) * 1000.0)
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001
@@ -90,10 +98,13 @@ class TransferGroupingService:
         gran_delta = timedelta(minutes=gran_minutes)
 
         # Get oldest unprocessed transfer
+        read_t0 = time.perf_counter()
         result = await transfer_repo._session.execute(
             select(Transfer).where(Transfer.is_processed == False).order_by(Transfer.timestamp.asc()).limit(1)
         )
         oldest = result.scalars().first()
+        read_t1 = time.perf_counter()
+        logger.debug("_process_batch: read_oldest_from_repo in %.2fms", (read_t1 - read_t0) * 1000.0)
 
         if oldest is None:
             logger.info("No unprocessed transfers found")
@@ -125,15 +136,23 @@ class TransferGroupingService:
             return
 
         # read unprocessed transfers from oldest to newest within window
+        read_rows_t0 = time.perf_counter()
         rows = await transfer_repo.list_for_sources_between(None, start_window, end_window)
         rows = [r for r in rows if not r.is_processed]
         rows.sort(key=lambda r: r.timestamp)
+        read_rows_t1 = time.perf_counter()
+        logger.debug(
+            "_process_batch: read_rows_from_repo %d rows in %.2fms",
+            0 if rows is None else len(rows),
+            (read_rows_t1 - read_rows_t0) * 1000.0,
+        )
 
         if not rows:
             logger.info("No unprocessed transfers in window")
             return
 
         # bucket by (source, satellite_id, interval_start)
+        proc_t0 = time.perf_counter()
         buckets: dict[tuple[str, str, datetime], list] = {}
         for tr in rows:
             # compute interval start aligned to granularity using helper
@@ -217,23 +236,43 @@ class TransferGroupingService:
                 )
                 created.append(tg)
 
+        # finish processing timing before DB add/mark
+        proc_t1 = time.perf_counter()
+        logger.debug(
+            "_process_batch: processing (bucket/aggregate) completed in %.2fms",
+            (proc_t1 - proc_t0) * 1000.0,
+        )
+
         # persist created grouped records and mark the source transfers processed.
         # The outer `async with database.SessionFactory()` already manages a transaction
         # for the session, so starting another `begin()` here raises an error. Use
         # add/flush/commit on the existing session instead.
+        add_t0 = time.perf_counter()
         grouped_repo._session.add_all(created)
         # mark processed transfers (modify mapped objects and add them to session)
         for tr in rows:
             if tr.id in processed_ids:
                 tr.is_processed = True
                 grouped_repo._session.add(tr)
+        add_t1 = time.perf_counter()
+        logger.debug(
+            "_process_batch: add_created_and_mark_processed %d created, %d processed ids in %.2fms",
+            len(created),
+            len(processed_ids),
+            (add_t1 - add_t0) * 1000.0,
+        )
 
         # flush changes and commit the transaction managed by the session context
+        flush_t0 = time.perf_counter()
         await grouped_repo._session.flush()
+        flush_t1 = time.perf_counter()
+        logger.debug("_process_batch: flush completed in %.2fms", (flush_t1 - flush_t0) * 1000.0)
+
+        commit_t0 = time.perf_counter()
         await grouped_repo._session.commit()
-
+        commit_t1 = time.perf_counter()
+        logger.debug("_process_batch: commit completed in %.2fms", (commit_t1 - commit_t0) * 1000.0)
         logger.info("Created %d grouped records and processed %d transfers", len(created), len(processed_ids))
-
     async def _promote_groups(
         self,
         grouped_repo: TransferGroupedRepository,
@@ -258,10 +297,13 @@ class TransferGroupingService:
         # use class helpers for UTC and rounding
 
         # Find bounds in from_gran
+        read_oldest_t0 = time.perf_counter()
         res_old = await grouped_repo._session.execute(
             select(TransferGrouped).where(TransferGrouped.granularity == from_gran).order_by(TransferGrouped.interval_start.asc()).limit(1)
         )
         oldest = res_old.scalars().first()
+        read_oldest_t1 = time.perf_counter()
+        logger.debug("_promote_groups: read_oldest_grouped in %.2fms", (read_oldest_t1 - read_oldest_t0) * 1000.0)
 
         if oldest is None:
             logger.debug("No grouped records at granularity %d", from_gran)
@@ -278,10 +320,13 @@ class TransferGroupingService:
             return
 
         # newest record
+        read_newest_t0 = time.perf_counter()
         res_new = await grouped_repo._session.execute(
             select(TransferGrouped).where(TransferGrouped.granularity == from_gran).order_by(TransferGrouped.interval_start.desc()).limit(1)
         )
         newest = res_new.scalars().first()
+        read_newest_t1 = time.perf_counter()
+        logger.debug("_promote_groups: read_newest_grouped in %.2fms", (read_newest_t1 - read_newest_t0) * 1000.0)
         if newest is None:
             logger.debug("No grouped records at granularity %d", from_gran)
             return
@@ -301,12 +346,22 @@ class TransferGroupingService:
             now - timedelta(minutes=newest_threshold_minutes), to_gran
         )
 
+        logger.debug("Promote groups start: %d->%d", from_gran, to_gran)
+
         # load all from_gran records with interval_start < endtime
+        read_rows_t0 = time.perf_counter()
         rows = await grouped_repo.list_for_granularity_before(from_gran, endtime)
+        read_rows_t1 = time.perf_counter()
+        logger.debug(
+            "_promote_groups: read_rows_from_repo %d rows in %.2fms",
+            0 if rows is None else len(rows),
+            (read_rows_t1 - read_rows_t0) * 1000.0,
+        )
         if not rows:
             logger.info("No %d-minute grouped records older than %s to promote", from_gran, endtime)
             return
 
+        proc_t0 = time.perf_counter()
         # bucket into to_gran intervals
         to_delta = timedelta(minutes=to_gran)
         buckets: dict[tuple[str, str, datetime], list] = {}
@@ -360,12 +415,46 @@ class TransferGroupingService:
                 )
                 created.append(tg)
 
+        proc_t1 = time.perf_counter()
+        logger.debug(
+            "_promote_groups: processing (aggregate) completed in %.2fms",
+            (proc_t1 - proc_t0) * 1000.0,
+        )
+
         # persist new grouped rows and delete old ones
+        add_t0 = time.perf_counter()
         grouped_repo._session.add_all(created)
+        add_t1 = time.perf_counter()
+        logger.debug(
+            "_promote_groups: add_created %d records in %.2fms",
+            len(created),
+            (add_t1 - add_t0) * 1000.0,
+        )
+
         # delete promoted source rows
+        del_t0 = time.perf_counter()
         await grouped_repo.delete_many_by_ids(promoted_ids)
+        del_t1 = time.perf_counter()
+        logger.debug(
+            "_promote_groups: delete_promoted %d ids in %.2fms",
+            len(promoted_ids),
+            (del_t1 - del_t0) * 1000.0,
+        )
 
+        flush_t0 = time.perf_counter()
         await grouped_repo._session.flush()
-        await grouped_repo._session.commit()
+        flush_t1 = time.perf_counter()
+        logger.debug("_promote_groups: flush completed in %.2fms", (flush_t1 - flush_t0) * 1000.0)
 
-        logger.info("Promoted %d records from %d->%d minute granularity into %d records", len(promoted_ids), from_gran, to_gran, len(created))
+        commit_t0 = time.perf_counter()
+        await grouped_repo._session.commit()
+        commit_t1 = time.perf_counter()
+        logger.debug("_promote_groups: commit completed in %.2fms", (commit_t1 - commit_t0) * 1000.0)
+
+        logger.info(
+            "Promoted %d records from %d->%d minute granularity into %d records",
+            len(promoted_ids),
+            from_gran,
+            to_gran,
+            len(created),
+        )

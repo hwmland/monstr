@@ -17,6 +17,34 @@ from .core.app import create_app
 logger = get_logger(__name__)
 
 
+def _sanitize_logger_override_pair(name: str, level: str) -> tuple[str, str] | None:
+    """Strip quotes/whitespace and validate the level. Returns (name, level)
+    upper-cased level on success or None on invalid input.
+    """
+    name = name.strip().strip('"').strip("'")
+    level = level.strip().strip('"').strip("'").upper()
+    try:
+        logging._checkLevel(level)
+    except Exception:
+        logger.warning("Skipping invalid log level '%s' for logger '%s'", level, name)
+        return None
+    return name, level
+
+
+def _apply_logger_override(log_config: dict, raw: str) -> None:
+    """Parse a raw NAME:LEVEL string, sanitize it and set it on log_config
+    if valid. This centralizes the behavior used for both env and CLI input.
+    """
+    if ":" not in raw:
+        return
+    name, level = raw.split(":", 1)
+    sanitized = _sanitize_logger_override_pair(name, level)
+    if sanitized is None:
+        return
+    name, level = sanitized
+    log_config.setdefault("loggers", {}).setdefault(name, {})["level"] = level
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Monstr log monitoring service")
     parser.add_argument(
@@ -151,18 +179,12 @@ def main() -> None:
 
     env_overrides = os.getenv("MONSTR_LOG_OVERRIDES", "")
     if env_overrides:
-        for pair in [p.strip() for p in env_overrides.split(",") if p.strip()]:
-            if ":" not in pair:
-                continue
-            name, level = pair.split(":", 1)
-            log_config["loggers"].setdefault(name, {})["level"] = level.upper()
+        for raw in [p.strip() for p in env_overrides.split(",") if p.strip()]:
+            _apply_logger_override(log_config, raw)
 
     # CLI overrides (args.log_overrides) take precedence
     for pair in (args.log_overrides or []):
-        if ":" not in pair:
-            continue
-        name, level = pair.split(":", 1)
-        log_config["loggers"].setdefault(name, {})["level"] = level.upper()
+        _apply_logger_override(log_config, pair)
 
     logging.config.dictConfig(log_config)
 

@@ -50,16 +50,41 @@ class CleanupService:
                     transfer_repository = TransferRepository(session)
                     grouped_repository = TransferGroupedRepository(session)
 
-                    deleted_logs = await log_repository.delete_older_than(cutoff_logs)
-                    deleted_transfers = await transfer_repository.delete_older_than(cutoff_transfers)
-                    deleted_grouped = await grouped_repository.delete_older_than(cutoff_grouped)
+                    import time
 
-                    if deleted_logs:
-                        logger.info("Deleted %d expired log entries", deleted_logs)
-                    if deleted_transfers:
-                        logger.info("Deleted %d expired transfers", deleted_transfers)
-                    if deleted_grouped:
-                        logger.info("Deleted %d expired grouped transfer aggregates", deleted_grouped)
+                    # Time each deletion step so operators can see which stages take
+                    # the most time during cleanup cycles. Use wall-clock `time.time()`
+                    # which is sufficient for coarse measurements (milliseconds).
+                    t0 = time.time()
+                    try:
+                        deleted_logs = await log_repository.delete_older_than(cutoff_logs)
+                    except Exception:  # noqa: BLE001
+                        deleted_logs = 0
+                        logger.exception("Failed deleting expired log entries")
+                    t_logs = (time.time() - t0) * 1000.0
+                    logger.info("Deleted %d expired log entries in %.2fms", deleted_logs, t_logs)
+
+                    t0 = time.time()
+                    try:
+                        deleted_transfers = await transfer_repository.delete_older_than(cutoff_transfers)
+                    except Exception:  # noqa: BLE001
+                        deleted_transfers = 0
+                        logger.exception("Failed deleting expired transfers")
+                    t_transfers = (time.time() - t0) * 1000.0
+                    logger.info("Deleted %d expired transfers in %.2fms", deleted_transfers, t_transfers)
+
+                    t0 = time.time()
+                    try:
+                        deleted_grouped = await grouped_repository.delete_older_than(cutoff_grouped)
+                    except Exception:  # noqa: BLE001
+                        deleted_grouped = 0
+                        logger.exception("Failed deleting expired grouped transfer aggregates")
+                    t_grouped = (time.time() - t0) * 1000.0
+                    logger.info(
+                        "Deleted %d expired grouped transfer aggregates in %.2fms",
+                        deleted_grouped,
+                        t_grouped,
+                    )
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001

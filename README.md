@@ -1,6 +1,6 @@
 # Monstr
 
-Monstr is a full-stack log monitoring platform. The asynchronous FastAPI backend tails multiple log files, persists new lines into SQLite, and exposes a REST API. The React + TypeScript frontend renders the stored data today and is prepared for WebSocket streaming in the future.
+Monstr is a full-stack STORJ log monitoring platform. The asynchronous FastAPI backend tails multiple log files, persists new lines into SQLite, and exposes a REST API. The React + TypeScript frontend renders the stored data today and is prepared for WebSocket streaming in the future.
 
 ## Features
 
@@ -8,6 +8,7 @@ Monstr is a full-stack log monitoring platform. The asynchronous FastAPI backend
 - Automatic database bootstrap and periodic data retention cleanup
 - REST API for querying stored log, reputation, and transfer data (served under `/api`)
 - Production build of the client served directly by the Python backend
+- Prepared to run in Docker (multi-stage Dockerfile included)
 - Modern React stack (Vite, TypeScript, Zustand) with testing via Vitest and Testing Library
 
 ## Project Structure
@@ -21,9 +22,11 @@ Monstr is a full-stack log monitoring platform. The asynchronous FastAPI backend
 - Node.js 18+
 - SQLite (bundled with standard Python installations)
 
-## Backend Setup
+## Server
 
-### Windows PowerShell
+### Backend Setup
+
+PowerShell (Windows)
 
 ```powershell
 cd server
@@ -32,7 +35,7 @@ python -m venv .vent.monstr
 pip install -r requirements.txt
 ```
 
-### Bash (macOS / Linux / WSL)
+Bash (macOS / Linux / WSL)
 
 ```bash
 cd server
@@ -43,155 +46,91 @@ pip install -r requirements.txt
 
 Deactivate the environment at any time with `deactivate`.
 
-### Running the API
+### Running the server
 
 > **Important:** run the CLI from the repository root (`monstr/`), not from the `server/` subdirectory. If you just installed dependencies inside `server/`, execute `cd ..` first.
+
+PowerShell (Windows):
 
 ```powershell
 # from the project root with the virtual environment still activated
 python -m server.src.cli --node myNode:.\testdata\node.log --node otherNode:C:\path\to\node2.log
 ```
 
-Node specifications follow the `NAME:PATH` pattern so each database record references the logical node name instead of the filesystem path. The CLI also accepts overrides such as `--host`, `--port`, and `--log-level`. The backend serves the OpenAPI docs at `http://127.0.0.1:8000/api/docs` and the built frontend (when present) at `http://127.0.0.1:8000/`.
-
-### Backend Tests
-
-```powershell
-pytest
-```
-
-## Frontend Workflow
-
-### Build for the Python Server
-
-```powershell
-cd client
-npm install
-npm run build
-```
-
-The compiled assets land in `client/dist`. On the next backend start, FastAPI will serve those files automatically.
-
-### Local Development & Tests
-
-```powershell
-npm run dev   # launches Vite dev server on http://127.0.0.1:5173
-npm test      # runs Vitest
-```
-
-During development the backend API remains available at `http://127.0.0.1:8000/api`.
-
-## Container Image
-
-The repository includes a multi-stage Dockerfile that builds the Vite client and bundles it alongside the FastAPI server inside a slim Python runtime.
-
-### Build the Image
-
-````powershell
-docker build -t monstr .
-# Monstr
-
-Monstr is a full-stack log monitoring platform. The asynchronous FastAPI backend tails multiple log files, persists new lines into SQLite, and exposes a REST API. The React + TypeScript frontend renders the stored data today and is prepared for WebSocket streaming in the future.
-
-## Highlights
-
-- Async tailing of multiple log files
-- Automatic database bootstrap and configurable data retention
-- REST API under `/api` for querying logs, transfers and derived aggregates
-- The Python backend can serve a production build of the React frontend
-
-## Project layout
-
-- `server/` – FastAPI app, background workers, database models and tests
-- `client/` – Vite + React SPA (TypeScript) with charts and UI
-
-## Requirements
-
-- Python 3.11+
-- Node.js 18+
-
-## Quickstart (backend)
-
-These instructions assume you work from the repository root (the top-level `monstr/` folder).
-
-Windows PowerShell
-
-```powershell
-cd server
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-cd ..
-````
-
-macOS / Linux / WSL
+Bash (macOS / Linux):
 
 ```bash
-cd server
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cd ..
+# from the project root with the virtual environment activated
+python -m server.src.cli --node myNode:./testdata/node.log --node otherNode:/path/to/node2.log
 ```
 
-Run the CLI (example)
+Node specifications follow the `NAME:PATH` pattern so each database record references the logical node name instead of the filesystem path. Below is a compact reference for the CLI, environment overrides, and examples showing how to run the server.
+
+### CLI usage
+
+Basic shape for starting the service:
+
+PowerShell (Windows):
 
 ```powershell
-# from the project root
-python -m server.src.cli --node Hashnode:.\testdata\hash.log --node Blobnode:.\testdata\blob.log --log-level info
+# from the project root with the virtual environment activated
+python -m server.src.cli --node myNode:.\testdata\node.log --node otherNode:C:\path\to\node2.log
 ```
 
-Notes
+Bash (macOS / Linux / WSL):
 
-- Node entries are provided as NAME:PATH so database records keep a stable logical name rather than a filesystem path.
-- The API OpenAPI docs are available at `http://127.0.0.1:8000/api/docs` when the server is running.
+```bash
+# from the project root with the virtual environment activated
+python -m server.src.cli --node myNode:./testdata/node.log --node otherNode:/path/to/node2.log
+```
 
-## CLI & logging configuration
+Supported CLI flags
 
-Monstr's CLI accepts both environment-based and CLI-based logging overrides so you can control logger levels at startup. The rules are:
+- `--node NAME:PATH` (repeatable) — Tell Monstr to monitor a local log file. Each `NAME:PATH` pair creates a logical node with the given NAME and watches the filesystem path for appended lines. Repeat the flag to monitor multiple files.
+- `--remote NAME:HOST:PORT` (repeatable) — Monitor a remote log source that streams log lines over TCP. The server will connect to the given HOST:PORT and treat the source as a node named NAME.
 
-- Environment variable: `MONSTR_LOG_OVERRIDES` — a comma-separated list of `LOGGER:LEVEL` entries.
-- CLI flag: `--log LOGGER:LEVEL` — a repeatable argument; CLI-provided overrides take precedence over the environment.
+  Implementation note: you can use the companion project `hwmland/tailsender` as a lightweight remote sender that tails a file and forwards appended lines to Monstr over TCP. Configure a tailsender instance on the remote host and point Monstr at it with `--remote name:host:port`.
 
-Examples (PowerShell)
+- `--host HOST` — Bind the API server to the specified host (default: `127.0.0.1`). Setting `--host 0.0.0.0` (or `--host ::`) makes the API listen on all network interfaces so the server becomes reachable from other machines on the network. Use this when running inside a container or when exposing the API to other hosts. Beware that binding to all interfaces exposes the API to your network; secure the host appropriately (firewall, auth) if used in production.
+- `--port PORT` — Bind the API server to the specified port (default: `8000`).
+- `--log-level LEVEL` — Override the API root logger level (e.g. `info`, `debug`). This sets the overall verbosity for the server.
+- `--log NAME:LEVEL` (repeatable) — Per-logger override in `LOGGER:LEVEL` form. These take precedence over the `MONSTR_LOG_OVERRIDES` environment variable and are useful to enable fine-grained debug output (for example `--log api.call:DEBUG`).
+
+Environment variables
+
+- `MONSTR_LOG_OVERRIDES` — Comma-separated `LOGGER:LEVEL` pairs (e.g. `root:INFO,services.cleanup:WARNING`). The CLI `--log` flag takes precedence for any logger it names.
+
+Examples
+
+PowerShell (Windows) example that sets two nodes and enables the request-finish debug messages emitted by the `api.call` logger:
 
 ```powershell
-$env:MONSTR_LOG_OVERRIDES = "root:INFO,services.cleanup:WARNING"
-python -m server.src.cli --node Hashnode:.\testdata\hash.log
-
-# CLI overrides (these win for the named loggers)
-python -m server.src.cli --node Hashnode:.\testdata\hash.log --log services.cleanup:DEBUG --log api:INFO
+python -m server.src.cli \
+	--node Hashnode:.\testdata\hash.log \
+	--node Blobnode:.\testdata\blob.log \
+	--host 0.0.0.0 \
+	--port 8000 \
+	--log-level info \
+	--log api.call:DEBUG
 ```
 
-Docker / docker-compose example
+Bash (macOS / Linux) equivalent:
 
-```yaml
-services:
-	monstr:
-		image: ghcr.io/hwmland/monstr:latest
-		ports:
-			- "8000:8000"
-		environment:
-			MONSTR_LOG_SOURCES: "hashnode:/logs/hash.log,blobnode:/logs/blob.log"
-			MONSTR_LOG_OVERRIDES: "root:INFO,services.cleanup:WARNING"
-		volumes:
-			- ./testdata:/logs:ro
-		command: ["python","-m","server.src.cli","--node","Hashnode:/logs/hash.log","--node","Blobnode:/logs/blob.log","--log","services.cleanup:DEBUG"]
+```bash
+python -m server.src.cli \
+	--node Hashnode:./testdata/hash.log \
+	--node Blobnode:./testdata/blob.log \
+	--host 0.0.0.0 \
+	--port 8000 \
+	--log-level info \
+	--log api.call:DEBUG
 ```
 
-The CLI will normalize formatters so the console output includes timestamps and the logger name (for example, `2025-11-02 12:34:56,789 root: Message...`).
+### Request-finish debug logging (api.call)
 
-## Request-finish debug logging (api.call)
+Monstr includes a small request-finish middleware that can emit a concise DEBUG message whenever an HTTP request completes. The message contains the client address, HTTP method, full path (including query), response status code and duration in milliseconds.
 
-Monstr includes a small request-finish middleware that can emit a concise DEBUG
-message whenever an HTTP request completes. The message contains the client
-address, HTTP method, full path (including query), response status code and
-duration in milliseconds.
-
-This behavior is controlled solely by the `api.call` logger. To enable the
-messages, set `api.call` to `DEBUG` using any of the supported mechanisms
-(environment/CLI/admin API). For example, use the admin API to set the logger at
-runtime:
+This behavior is controlled solely by the `api.call` logger. To enable the messages, set `api.call` to `DEBUG` using any of the supported mechanisms (environment/CLI/admin API). For example, use the admin API to set the logger at runtime:
 
 ```http
 POST /api/admin/loggers
@@ -220,53 +159,119 @@ Notes:
   use existing logging controls to manage verbosity without adding another
   configuration surface.
 
-## Testing
+### What the server serves
 
-Server tests are written with pytest and live under `server/src/tests`. Run them from the project root so imports resolve correctly:
+- OpenAPI docs: once running, the backend exposes the OpenAPI UI at `http://<host>:<port>/api/docs` (default `http://127.0.0.1:8000/api/docs`).
+- Frontend SPA: if `client/dist` exists (a production build of the client), FastAPI will serve the compiled SPA at the root path `/` (for example `http://127.0.0.1:8000/`).
 
-PowerShell
+Tip: always run the CLI from the repository root so relative paths in `NAME:PATH` pairs are resolved consistently.
+
+### Backend Tests
+
+PowerShell (Windows):
 
 ```powershell
-$env:PYTHONPATH = "."
-pytest -q
+pytest
 ```
 
-macOS / Linux
+Bash (macOS / Linux / WSL):
 
 ```bash
-PYTHONPATH=. pytest -q
+pytest
 ```
 
-Client (frontend)
+## Frontend Workflow
+
+### Build for the Python Server
+
+PowerShell (Windows):
 
 ```powershell
 cd client
 npm install
-npm run dev    # development server (Vite)
-npm run build  # build production assets
-npm test       # run Vitest
+npm run build
 ```
 
-When you run the production backend and the client has been built (`client/dist` exists), FastAPI will serve the compiled SPA at `/` automatically.
+Bash (macOS / Linux / WSL):
 
-## Docker image
+```bash
+cd client
+npm install
+npm run build
+```
 
-The repository contains a multi-stage `Dockerfile` that builds the client and bundles it with the Python runtime.
+The compiled assets land in `client/dist`. On the next backend start, FastAPI will serve those files automatically.
 
-Build the image locally
+### Local Development & Tests
+
+PowerShell (Windows):
+
+```powershell
+npm run dev   # launches Vite dev server on http://127.0.0.1:5173
+npm test      # runs Vitest
+```
+
+Bash (macOS / Linux / WSL):
+
+```bash
+npm run dev   # launches Vite dev server on http://127.0.0.1:5173
+npm test      # runs Vitest
+```
+
+During development the backend API remains available at `http://127.0.0.1:8000/api`.
+
+## Container Image
+
+The repository includes a multi-stage Dockerfile that builds the Vite client and bundles it alongside the FastAPI server inside a slim Python runtime.
+
+### Build the Image
+
+PowerShell (Windows):
 
 ```powershell
 docker build -t monstr .
 ```
 
-Run the container with sample logs mounted (PowerShell example)
+Bash (macOS / Linux / WSL):
+
+```bash
+docker build -t monstr .
+```
+
+Run the container with sample logs mounted (example binds port 8000 and mounts a `testdata` directory):
+
+PowerShell (Windows):
 
 ```powershell
 docker run `
 	-p 8000:8000 `
 	-e MONSTR_LOG_SOURCES="hashnode:/logs/hash.log,blobnode:/logs/blob.log" `
 	-v ${PWD}\testdata:/logs:ro `
-	ghcr.io/hwmland/monstr:latest
+	monstr:latest
+```
+
+Bash (macOS / Linux / WSL):
+
+```bash
+docker run -p 8000:8000 \
+	-e MONSTR_LOG_SOURCES="hashnode:/logs/hash.log,blobnode:/logs/blob.log" \
+	-v ${PWD}/testdata:/logs:ro \
+	monstr:latest
+```
+
+Docker Compose example (service runs the CLI and sets logger overrides):
+
+```yaml
+services:
+	monstr:
+		image: ghcr.io/hwmland/monstr:latest
+		ports:
+			- "8000:8000"
+		environment:
+			MONSTR_LOG_SOURCES: "hashnode:/logs/hash.log,blobnode:/logs/blob.log"
+			MONSTR_LOG_OVERRIDES: "root:INFO,services.cleanup:WARNING"
+		volumes:
+			- ./testdata:/logs:ro
 ```
 
 ## Development notes and next steps
