@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import time
 from server.src.core.logging import get_logger
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -49,8 +50,6 @@ class CleanupService:
                     log_repository = LogEntryRepository(session)
                     transfer_repository = TransferRepository(session)
                     grouped_repository = TransferGroupedRepository(session)
-
-                    import time
 
                     # Time each deletion step so operators can see which stages take
                     # the most time during cleanup cycles. Use wall-clock `time.time()`

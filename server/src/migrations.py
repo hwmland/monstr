@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-import logging
-from server.src.core.logging import get_logger
+from __future__ import annotations
 
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from server.src.core.logging import get_logger
+
 from . import models
+
 
 logger = get_logger(__name__)
 
@@ -119,21 +121,61 @@ def _migrate_0_to_1(conn: Connection) -> None:
     logger.info("Completed migration 0 -> 1")
 
 
+def _migrate_1_to_2(conn: Connection) -> None:
+    """Add an index on the transfer.is_processed column to speed up scans.
+
+    This migration creates an index if it does not already exist. It is safe to
+    run multiple times (uses IF NOT EXISTS) and checks the table exists first.
+    """
+    logger.info("Starting migration 1 -> 2: add index on transfer.is_processed")
+
+    inspector = inspect(conn)
+    transfer_table_name = models.Transfer.__table__.name
+    if not inspector.has_table(transfer_table_name):
+        logger.info("Skipping index creation: table %s does not exist", transfer_table_name)
+        return
+
+    # Use a deterministic index name
+    index_name = f"ix_{transfer_table_name}_is_processed"
+    # Create index if it does not exist. SQLite supports IF NOT EXISTS.
+    conn.execute(
+        text(f'CREATE INDEX IF NOT EXISTS "{index_name}" ON "{transfer_table_name}" ("is_processed")')
+    )
+
+    logger.info("Completed migration 1 -> 2")
+
+
 MigrationFunc = type(_migrate_0_to_1)
 
-MIGRATIONS = (_migrate_0_to_1,)
+MIGRATIONS = (_migrate_0_to_1, _migrate_1_to_2)
 LATEST_SCHEMA_VERSION = len(MIGRATIONS)
 
 
 def apply_migrations(conn: Connection) -> None:
     _create_schema_version_table(conn)
     current_version = _get_schema_version(conn)
-
     target_version = LATEST_SCHEMA_VERSION
     if current_version > target_version:
         raise RuntimeError(
             f"Database schema version {current_version} is newer than supported version {target_version}."
         )
+
+    # If the database is brand-new (only the schema_version table exists),
+    # initialize it immediately to the target version and skip running
+    # migrations — there is nothing to migrate on a fresh DB.
+    inspector = inspect(conn)
+    existing_tables = [t for t in inspector.get_table_names()]
+    # Consider DB new when only schema_version exists (or no user tables)
+    user_tables = [t for t in existing_tables if t != "schema_version"]
+    if current_version == 0 and not user_tables:
+        logger.info("New database detected: initializing schema_version to %d and skipping migrations", target_version)
+        _set_schema_version(conn, target_version)
+        return
+    logger.info(
+        "Database schema version at start: current=%d, target=%d",
+        current_version,
+        target_version,
+    )
 
     for index, migration in enumerate(MIGRATIONS, start=1):
         if current_version < index:
@@ -141,10 +183,8 @@ def apply_migrations(conn: Connection) -> None:
             migration(conn)
             _set_schema_version(conn, index)
             current_version = index
-
-    if current_version == 0 and target_version == 0:
-        # Ensure the schema_version row is initialized even when there are no migrations.
-        _set_schema_version(conn, 0)
+    # Ensure the schema_version row reflects the actual (target) version after migrations.
+    _set_schema_version(conn, target_version)
 
 
 async def run_migrations(connection: AsyncConnection) -> None:

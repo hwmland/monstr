@@ -63,7 +63,7 @@ class Transfer(SQLModel, table=True):
 
     is_processed: bool = Field(
         default=False,
-        sa_column=Column(Boolean, nullable=False, server_default="0"),
+        sa_column=Column(Boolean, nullable=False, server_default="0", index=True),
         description="Flag indicating transfer has been processed",
     )
 

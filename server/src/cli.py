@@ -2,17 +2,20 @@ from __future__ import annotations
 
 import argparse
 import logging
-from server.src.core.logging import get_logger
 import logging.config
+import os
+import time
+from copy import deepcopy
 from typing import Any, Dict
 
 import uvicorn
 from uvicorn.config import LOGGING_CONFIG
 
-from copy import deepcopy
+from server.src.core.logging import get_logger
 
 from .config import Settings
 from .core.app import create_app
+
 
 logger = get_logger(__name__)
 
@@ -124,7 +127,6 @@ def main() -> None:
     # Normalize formatter strings: if a formatter contains either %(levelprefix)s
     # (uvicorn's colored level) or %(levelname)s, prefix it with %(asctime)s and
     # ensure the logger name appears before the message as "%(name)s: %(message)s".
-    import time
 
     # Use UTC for asctime in log output
     logging.Formatter.converter = time.gmtime
@@ -175,7 +177,6 @@ def main() -> None:
 
     # Apply environment and CLI logger level overrides.
     # MONSTR_LOG_OVERRIDES is a comma-separated list like: "sqlalchemy.engine:WARNING,server:DEBUG"
-    import os
 
     env_overrides = os.getenv("MONSTR_LOG_OVERRIDES", "")
     if env_overrides:

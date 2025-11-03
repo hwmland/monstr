@@ -7,6 +7,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+import time
+
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from ..api.routes import (
     health,
@@ -66,12 +69,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Request-finish middleware: always-registered but gated by the runtime
     # setting `debug_log_request_finish` so it can be toggled via the admin API.
-    from starlette.middleware.base import BaseHTTPMiddleware
-
 
     class RequestFinishMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request, call_next):
-            import time
 
             start = time.time()
             response = await call_next(request)
