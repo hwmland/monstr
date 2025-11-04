@@ -574,6 +574,17 @@ class LogMonitorService:
         if level == "INFO" and area == "trust" and action == "Scheduling next refresh":
             return True
 
+        if level == "INFO" and area == "hashstore":
+            return True
+
+        if level == "INFO" and area in {
+                "lazyfilewalker.trash-cleanup-filewalker",
+                "lazyfilewalker.trash-cleanup-filewalker.subprocess",
+                "lazyfilewalker.gc-filewalker",
+                "lazyfilewalker.gc-filewalker.subprocess",
+            }:
+            return True
+
         return False
 
     def _process_payload(
@@ -604,19 +615,19 @@ class LogMonitorService:
             if area == "pieces:trash":
                 log_payload = self._process_pieces_trash_payload(payload)
                 return log_payload, None, None
-            if area == "hashstore":
+            if area == "hashstore": # ignored now
                 log_payload = self._process_hashstore_payload(payload)
                 return log_payload, None, None
             if area in {
                 "lazyfilewalker.trash-cleanup-filewalker",
                 "lazyfilewalker.trash-cleanup-filewalker.subprocess",
-            }:
+            }:  # ignored now
                 log_payload = self._process_lazyfilewalker_trash_payload(payload)
                 return log_payload, None, None
             if area in {
                 "lazyfilewalker.gc-filewalker",
                 "lazyfilewalker.gc-filewalker.subprocess",
-            }:
+            }:  # ignored now
                 log_payload = self._process_lazyfilewalker_gc_payload(payload)
                 return log_payload, None, None
             if area == "collector":
