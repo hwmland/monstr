@@ -1,11 +1,11 @@
 name: Build and publish Docker image
 
 on:
-  #  push:
+  push:
   #    branches:
   #      - master
-  #    tags:
-  #      - "v*.*.*"
+    tags:
+      - "v*.*.*"
   workflow_dispatch: {}
 
 permissions:
