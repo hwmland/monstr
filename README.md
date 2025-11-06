@@ -7,6 +7,7 @@ Monstr is a full-stack STORJ log monitoring platform. The asynchronous FastAPI b
 - Async log tailing across multiple files defined at startup
 - Automatic database bootstrap and periodic data retention cleanup
 - REST API for querying stored log, reputation, and transfer data (served under `/api`)
+- REST API for adding sensors to Home Assistant
 - Production build of the client served directly by the Python backend
 - Prepared to run in Docker (multi-stage Dockerfile included)
 - Modern React stack (Vite, TypeScript, Zustand) with testing via Vitest and Testing Library
@@ -162,6 +163,130 @@ Notes:
 
 - OpenAPI docs: once running, the backend exposes the OpenAPI UI at `http://<host>:<port>/api/docs` (default `http://127.0.0.1:8000/api/docs`).
 - Frontend SPA: if `client/dist` exists (a production build of the client), FastAPI will serve the compiled SPA at the root path `/` (for example `http://127.0.0.1:8000/`).
+
+- Overall status API: the server exposes a lightweight health/status endpoint at
+  `/api/overall-status` which returns a compact JSON summary of the running
+  service (configured source count, last-processed timestamps, processing
+  lag, database connectivity and similar high-level metrics). This endpoint is
+  intentionally small and stable so it can be polled frequently by external
+  systems. It's provided primarily as a convenience for Home Assistant users —
+  you can create a simple REST sensor in Home Assistant to surface Monstr's
+  health into dashboards and automations.
+
+  Example Home Assistant REST sensor configuration:
+
+```yaml
+rest:
+  resource: http://pve1.internal:9898/api/overall-status
+  method: POST
+  headers:
+    User-Agent: Home Assistant
+    Content-Type: application/json
+  payload: '{ "nodes": [ ] }'
+  scan_interval: 60
+  sensor:
+    - name: "STORJ Download Speed"
+      value_template: "{{ (float(value_json.total.minute1.downloadSpeed) / 1000000) }}"
+      unit_of_measurement: "Mbps"
+    - name: "STORJ Upload Speed"
+      value_template: "{{ value_json.total.minute1.uploadSpeed / 1000000 }}"
+      unit_of_measurement: "Mbps"
+```
+
+<details>
+<summary>API output: /api/overall-status (click to expand)</summary>
+
+The `/api/overall-status` endpoint returns an `OverallStatusResponse` containing a `total` summary and a `nodes` array. Each entry follows the `NodeOverallMetrics` schema and contains reputation aggregates and short transfer windows. The request body is `OverallStatusRequest` (JSON `{ "nodes": [...] }`); omit or send an empty list to request all nodes.
+
+Response shape (serialized field names shown):
+
+- `total` (object): aggregate `NodeOverallMetrics` across selected nodes.
+- `nodes` (array): list of `NodeOverallMetrics` objects for each node.
+
+NodeOverallMetrics fields:
+
+- `node` (string)
+- `minOnline`, `minAudit`, `minSuspension` (float) — minimum reputation scores observed across satellites
+- `avgOnline`, `avgAudit`, `avgSuspension` (float) — simple averages of reputation scores
+- `minute1`, `minute3`, `minute5` (objects) — `TransferWindowMetrics` for 1/3/5 minute windows
+
+TransferWindowMetrics fields (per window):
+
+- `downloadSize`, `uploadSize` (int) — total bytes transferred in the window
+- `downloadCount`, `uploadCount` (int) — successful operation counts
+- `downloadCountTotal`, `uploadCountTotal` (int) — total attempted operations (including failures)
+- `downloadSuccessRate`, `uploadSuccessRate` (float 0..1) — success ratios
+- `downloadSpeed`, `uploadSpeed` (float) — computed speeds; implementation reports bytes/sec converted to bits/sec (bytes/window_seconds \* 8)
+
+Example payload (matches current implementation):
+
+```json
+{
+  "total": {
+    "node": "total",
+    "minOnline": 0.98,
+    "minAudit": 0.95,
+    "minSuspension": 0.0,
+    "avgOnline": 0.993,
+    "avgAudit": 0.976,
+    "avgSuspension": 0.0,
+    "minute1": {
+      "downloadSize": 1234567,
+      "uploadSize": 234567,
+      "downloadCount": 12,
+      "uploadCount": 3,
+      "downloadCountTotal": 13,
+      "uploadCountTotal": 4,
+      "downloadSuccessRate": 0.9230769230769231,
+      "uploadSuccessRate": 0.75,
+      "downloadSpeed": 164608.93333333335,
+      "uploadSpeed": 31274.666666666668
+    },
+    "minute3": {
+      /* ... */
+    },
+    "minute5": {
+      /* ... */
+    }
+  },
+  "nodes": [
+    {
+      "node": "hashnode",
+      "minOnline": 0.99,
+      "minAudit": 0.97,
+      "minSuspension": 0.0,
+      "avgOnline": 0.995,
+      "avgAudit": 0.98,
+      "avgSuspension": 0.0,
+      "minute1": {
+        "downloadSize": 1234567,
+        "uploadSize": 234567,
+        "downloadCount": 12,
+        "uploadCount": 3,
+        "downloadCountTotal": 13,
+        "uploadCountTotal": 4,
+        "downloadSuccessRate": 0.923,
+        "uploadSuccessRate": 0.75,
+        "downloadSpeed": 164608.9,
+        "uploadSpeed": 31274.7
+      },
+      "minute3": {
+        /* ... */
+      },
+      "minute5": {
+        /* ... */
+      }
+    }
+  ]
+}
+```
+
+Notes:
+
+- The `downloadSpeed` / `uploadSpeed` values are in bits per second as computed by the implementation (bytes/window_seconds \* 8). Convert to Mbps in Home Assistant with `value_json.total.minute1.downloadSpeed / 1000000`.
+- Use `value_template` to extract a single numeric value for a sensor and `json_attributes_path: "$"` to expose the rest of the payload as attributes.
+
+</details>
 
 Tip: always run the CLI from the repository root so relative paths in `NAME:PATH` pairs are resolved consistently.
 
