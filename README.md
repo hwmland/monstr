@@ -87,7 +87,7 @@ python -m server.src.cli --source myNode:./testdata/node.log --source otherNode:
 
 Supported CLI flags
 
-- `--source NAME:SPEC` (repeatable) — Declare a log source in the preferred sequence. Use `NAME:PATH` for local log files or `NAME:HOST:PORT` for remote TCP sources. Repeat the flag to declare multiple sources; their declared order is preserved at startup.
+- `--source NAME:SPEC` (repeatable) — Declare a log source in the preferred sequence. Use `NAME:PATH` for local log files or `NAME:HOST:PORT` for remote TCP sources. Repeat the flag to declare multiple sources; their declared order is preserved at startup. Append `|http://localhost:14002` (or another HTTP(S) URL) to associate a nodeapi endpoint with the source.
 
   Implementation note: you can use the companion project `hwmland/tailsender` as a lightweight remote sender that tails a file and forwards appended lines to Monstr over TCP. Configure a tailsender instance on the remote host and point Monstr at it with `--source name:host:port`.
 
@@ -106,7 +106,7 @@ PowerShell (Windows) example that sets two nodes and enables the request-finish 
 
 ```powershell
 python -m server.src.cli \
-  --source Hashnode:.\testdata\hash.log \
+  --source Hashnode:.\testdata\hash.log|http://localhost:14002 \
   --source Blobnode:.\testdata\blob.log \
   --host 0.0.0.0 \
   --port 8000 \
@@ -118,7 +118,7 @@ Bash (macOS / Linux) equivalent:
 
 ```bash
 python -m server.src.cli \
-  --source Hashnode:./testdata/hash.log \
+  --source Hashnode:./testdata/hash.log|http://localhost:14002 \
   --source Blobnode:./testdata/blob.log \
   --host 0.0.0.0 \
   --port 8000 \
@@ -392,7 +392,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-  MONSTR_SOURCES="hashnode:/logs/hash.log,blobnode:/logs/blob.log"
+      MONSTR_SOURCES="hashnode:/logs/hash.log|http://localhost:14002,blobnode:/logs/blob.log"
       MONSTR_LOG_OVERRIDES="root:INFO,services.cleanup:WARNING"
     volumes:
       - ./testdata:/logs:ro

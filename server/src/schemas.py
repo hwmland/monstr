@@ -247,6 +247,7 @@ class TransferGroupedFilters(BaseModel):
 class NodeConfig(BaseModel):
     name: str = Field(..., description="Node identifier configured in settings")
     path: str = Field(..., description="Absolute path to the node log file")
+    nodeapi: Optional[str] = Field(default=None, description="Optional HTTP(S) node API endpoint (nodeapi)")
 
 
 class DataDistributionRequest(BaseModel):
@@ -325,6 +326,28 @@ class IntervalTransfersRequest(BaseModel):
 
 class OverallStatusRequest(BaseModel):
     nodes: list[str] = Field(default_factory=list, description="Nodes to include; empty means all nodes")
+
+
+class PayoutCurrentRequest(BaseModel):
+    nodes: list[str] = Field(default_factory=list, description="Nodes to include; empty means all nodes")
+
+
+class PayoutNode(BaseModel):
+    joined_at: Optional[datetime] = Field(default=None, serialization_alias="joinedAt")
+    last_estimated_payout_at: Optional[datetime] = Field(default=None, serialization_alias="lastEstimatedPayoutAt")
+    estimated_payout: Optional[float] = Field(default=None, serialization_alias="estimatedPayout")
+    held_back_payout: Optional[float] = Field(default=None, serialization_alias="heldBackPayout")
+    download_payout: Optional[float] = Field(default=None, serialization_alias="downloadPayout")
+    repair_payout: Optional[float] = Field(default=None, serialization_alias="repairPayout")
+    disk_payout: Optional[float] = Field(default=None, serialization_alias="diskPayout")
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class PayoutCurrentResponse(BaseModel):
+    nodes: dict[str, PayoutNode] = Field(default_factory=dict)
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class TransferWindowMetrics(BaseModel):

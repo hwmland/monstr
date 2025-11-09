@@ -20,11 +20,13 @@ from ..api.routes import (
     transfers,
     overall_status,
     loggers,
+    payout,
 )
 from ..config import Settings
 from ..database import configure_database, init_database
 from ..services.cleanup import CleanupService
 from ..services.log_monitor import LogMonitorService
+from ..services.node_api import NodeApiService
 from ..services.transfer_grouping import TransferGroupingService
 
 logger = get_logger(__name__)
@@ -41,14 +43,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await init_database(settings)
 
         log_monitor = LogMonitorService(settings)
+        nodeapi_service = NodeApiService(settings)
         cleanup_service = CleanupService(settings)
         transfer_grouping = TransferGroupingService(settings)
 
         await log_monitor.start()
+        await nodeapi_service.start()
         await cleanup_service.start()
         await transfer_grouping.start()
 
         app.state.log_monitor = log_monitor
+        app.state.nodeapi_service = nodeapi_service
         app.state.cleanup_service = cleanup_service
         app.state.transfer_grouping = transfer_grouping
 
@@ -56,6 +61,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             yield
         finally:
             await log_monitor.stop()
+            await nodeapi_service.stop()
             await cleanup_service.stop()
             await transfer_grouping.stop()
 
@@ -130,6 +136,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(transfers.router)
     app.include_router(overall_status.router)
     app.include_router(loggers.router)
+    app.include_router(payout.router)
 
     frontend_path = settings.frontend_path
     if frontend_path and frontend_path.exists():

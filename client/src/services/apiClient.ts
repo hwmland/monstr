@@ -167,6 +167,11 @@ export const fetchDataDistribution = async (nodes: string[]) => {
   return response.data;
 };
 
+export const fetchPayoutCurrent = async (nodes: string[]) => {
+  const response = await apiClient.post("/payout/current", { nodes });
+  return response.data;
+};
+
 export const fetchIntervalTransfers = async (nodes: string[], intervalLength: string, numberOfIntervals: number) => {
   const response = await apiClient.post("/transfer-grouped/intervals", { nodes, intervalLength, numberOfIntervals });
   return response.data;
