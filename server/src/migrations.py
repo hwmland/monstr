@@ -143,9 +143,16 @@ def _migrate_1_to_2(conn: Connection) -> None:
     logger.info("Completed migration 1 -> 2")
 
 
+def _migrate_2_to_3(conn: Connection) -> None:
+    """Create HeldAmount table to store per-node held payout records."""
+    logger.info("Starting migration 2 -> 3: create HeldAmount table")
+    models.HeldAmount.__table__.create(conn, checkfirst=True)
+    logger.info("Completed migration 2 -> 3")
+
+
 MigrationFunc = type(_migrate_0_to_1)
 
-MIGRATIONS = (_migrate_0_to_1, _migrate_1_to_2)
+MIGRATIONS = (_migrate_0_to_1, _migrate_1_to_2, _migrate_2_to_3)
 LATEST_SCHEMA_VERSION = len(MIGRATIONS)
 
 

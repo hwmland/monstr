@@ -21,6 +21,7 @@ from ..api.routes import (
     overall_status,
     loggers,
     payout,
+    held_amounts,
 )
 from ..config import Settings
 from ..database import configure_database, init_database
@@ -137,6 +138,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(overall_status.router)
     app.include_router(loggers.router)
     app.include_router(payout.router)
+    app.include_router(held_amounts.router)
 
     frontend_path = settings.frontend_path
     if frontend_path and frontend_path.exists():

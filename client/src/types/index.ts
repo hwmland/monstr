@@ -58,6 +58,7 @@ export interface PayoutNode {
   lastEstimatedPayoutAt?: string | null;
   estimatedPayout?: number | null;
   heldBackPayout?: number | null;
+  totalHeldPayout?: number | null;
   downloadPayout?: number | null;
   repairPayout?: number | null;
   diskPayout?: number | null;

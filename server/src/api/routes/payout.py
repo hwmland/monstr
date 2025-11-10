@@ -46,6 +46,7 @@ async def current_payouts(req: PayoutCurrentRequest, request: Request) -> Payout
             last_estimated_payout_at=data.last_estimated_payout_at,
             estimated_payout=data.estimated_payout,
             held_back_payout=data.held_back_payout,
+            total_held_payout=data.total_held_amount,
             download_payout=data.download_payout,
             repair_payout=data.repair_payout,
             disk_payout=data.disk_payout,

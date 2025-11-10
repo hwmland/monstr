@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # Interval (seconds) after which the estimated-payout endpoint should be
     # re-queried for fresh payout estimates. Default: 5 minutes.
     nodeapi_estimated_payout_interval_seconds: int = 300
+    # Interval (seconds) after which the held-history endpoint should be
+    # re-queried for fresh per-satellite held amounts. Default: 5 minutes.
+    nodeapi_held_history_interval_seconds: int = 300
 
     cleanup_interval_seconds: int = 300
     grouping_interval_seconds: int = 120

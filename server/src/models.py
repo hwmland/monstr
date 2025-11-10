@@ -144,3 +144,25 @@ class TransferGrouped(SQLModel, table=True):
     count_ul_succ_rep: int = Field(default=0, description="Successful repair upload count")
     count_dl_fail_rep: int = Field(default=0, description="Failed repair download count")
     count_ul_fail_rep: int = Field(default=0, description="Failed repair upload count")
+
+
+class HeldAmount(SQLModel, table=True):
+    """Per-node held payout amounts recorded from nodeapi or other sources."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    source: str = Field(
+        sa_column=Column(String(32), index=True, nullable=False),
+        description="Configured node name for the log source",
+    )
+    satellite_id: str = Field(
+        sa_column=Column(String(64), nullable=False),
+        description="Satellite identifier",
+    )
+    timestamp: datetime = Field(
+        sa_column=Column(DateTime(timezone=True), nullable=False, index=True),
+        description="Timestamp associated with the held amount",
+    )
+    amount: float = Field(
+        sa_column=Column(Float, nullable=False),
+        description="Held amount (flat)",
+    )

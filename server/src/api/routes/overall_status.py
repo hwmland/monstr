@@ -1,19 +1,21 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...database import get_session
 from ...repositories.reputations import ReputationRepository
 from ...repositories.transfers import TransferRepository
 from ...schemas import OverallStatusRequest, OverallStatusResponse, NodeOverallMetrics, TransferWindowMetrics
+from ...services.node_api import NodeApiService
 from datetime import datetime, timezone, timedelta
+from typing import Optional
 
 router = APIRouter(prefix="/api/overall-status", tags=["overall-status"])
 
 
 @router.post("", response_model=OverallStatusResponse)
-async def overall_status(payload: OverallStatusRequest, session: AsyncSession = Depends(get_session)) -> OverallStatusResponse:
+async def overall_status(payload: OverallStatusRequest, request: Request, session: AsyncSession = Depends(get_session)) -> OverallStatusResponse:
     now = datetime.now(timezone.utc)
 
     # reputations
@@ -32,6 +34,20 @@ async def overall_status(payload: OverallStatusRequest, session: AsyncSession = 
         reps_by_node.setdefault(r.source, []).append(r)
 
     nodes = requested_nodes if not fetch_all else sorted(reps_by_node.keys())
+
+    # Attempt to obtain NodeApiService instance from the running app state so
+    # we can enrich per-node metrics with current-month payout information.
+    # The route accepts a Request parameter so FastAPI will provide access to
+    # `request.app.state` where the service is stored on startup.
+    nodeapi_service: NodeApiService | None = None
+    # The request object will be available as a parameter to the route; if
+    # the service isn't registered we simply skip enrichment.
+    try:
+        svc = getattr(request.app.state, "nodeapi_service", None) or getattr(request.app.state, "node_api_service", None)
+        if isinstance(svc, NodeApiService):
+            nodeapi_service = svc
+    except Exception:
+        nodeapi_service = None
 
     # transfers in last 5 minutes
     transfer_repo = TransferRepository(session)
@@ -118,6 +134,29 @@ async def overall_status(payload: OverallStatusRequest, session: AsyncSession = 
             )
         )
 
+    # If nodeapi service is available, fetch NodeData snapshots and attach
+    # current month payout information to the corresponding NodeOverallMetrics
+    if nodeapi_service is not None:
+        try:
+            node_data_map = await nodeapi_service.get_node_data(nodes or None)
+            # node_data_map: dict[str, NodeData]
+            for n in per_node_metrics:
+                nd = node_data_map.get(n.node)
+                if not nd:
+                    continue
+                # populate the current_month_payout field
+                n.current_month_payout = NodeOverallMetrics.CurrentMonthPayout(
+                    estimated_payout=nd.estimated_payout,
+                    held_back_payout=nd.held_back_payout,
+                    download_payout=nd.download_payout,
+                    repair_payout=nd.repair_payout,
+                    disk_payout=nd.disk_payout,
+                    total_held_payout=nd.total_held_amount,
+                )
+        except Exception:
+            # non-fatal: if enrichment fails, continue without payout data
+            pass
+
     # compute overall totals by summing per-node values
     if per_node_metrics:
         # reputations: min of mins, average of averages (weighted by satellite count isn't available here so use simple mean)
@@ -188,4 +227,36 @@ async def overall_status(payload: OverallStatusRequest, session: AsyncSession = 
             node="total",
         )
 
-    return OverallStatusResponse(total=total_node, nodes=per_node_metrics)
+    # convert list to mapping node->metrics to match schema change
+    per_node_map: dict[str, NodeOverallMetrics] = {n.node: n for n in per_node_metrics}
+
+    # Aggregate currentMonthPayout across nodes for the total. Use the
+    # per-node `current_month_payout` values when present; if no node has a
+    # non-null value for a given field keep it as None on the total.
+    def _aggregate_field(field_name: str) -> Optional[float]:
+        vals: list[float] = []
+        for n in per_node_metrics:
+            cmp = getattr(n, "current_month_payout", None)
+            if cmp is None:
+                continue
+            v = getattr(cmp, field_name, None)
+            if v is None:
+                continue
+            try:
+                vals.append(float(v))
+            except Exception:
+                continue
+        if not vals:
+            return None
+        return sum(vals)
+
+    total_node.current_month_payout = NodeOverallMetrics.CurrentMonthPayout(
+        estimated_payout=_aggregate_field("estimated_payout"),
+        held_back_payout=_aggregate_field("held_back_payout"),
+        download_payout=_aggregate_field("download_payout"),
+        repair_payout=_aggregate_field("repair_payout"),
+        disk_payout=_aggregate_field("disk_payout"),
+        total_held_payout=_aggregate_field("total_held_payout"),
+    )
+
+    return OverallStatusResponse(total=total_node, nodes=per_node_map)

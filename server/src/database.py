@@ -28,7 +28,6 @@ def configure_database(config: Settings | None = None) -> None:
 
 configure_database()
 
-
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """Provide a scoped async session for request handlers."""
     async with SessionFactory() as session:
@@ -42,8 +41,6 @@ async def init_database(config: Settings | None = None) -> None:
     if cfg.database_url.startswith("sqlite"):
         db_path = cfg.database_path
         db_path.parent.mkdir(parents=True, exist_ok=True)
-
-    from . import models  # noqa: F401 - ensure models are registered with SQLModel metadata
 
     if engine is None:
         raise RuntimeError("Database engine is not configured")

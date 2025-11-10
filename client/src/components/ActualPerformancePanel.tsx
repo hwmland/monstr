@@ -32,6 +32,7 @@ interface PayoutTotals {
   download: number;
   repair: number;
   estimated: number;
+  totalHeld: number;
 }
 
 const buildMetricView = (
@@ -122,6 +123,7 @@ const ActualPerformancePanel: FC<ActualPerformancePanelProps> = ({
         download: 0,
         repair: 0,
         estimated: 0,
+        totalHeld: 0,
       };
 
       for (const entry of Object.values(nodesMap)) {
@@ -129,6 +131,7 @@ const ActualPerformancePanel: FC<ActualPerformancePanelProps> = ({
           continue;
         }
 
+        totals.totalHeld += toNumeric(entry.totalHeldPayout);
         totals.held += toNumeric(entry.heldBackPayout);
         totals.disk += toNumeric(entry.diskPayout);
         totals.download += toNumeric(entry.downloadPayout);
@@ -208,6 +211,7 @@ const ActualPerformancePanel: FC<ActualPerformancePanelProps> = ({
         <div className="payout-tooltip__row"><span>Held</span><span><strong>{displayValue(payoutTotals?.held ?? 0)}</strong></span></div>
         <div className="payout-tooltip__sep" aria-hidden="true" />
         <div className="payout-tooltip__row"><span>Month Estimated</span><span><strong>{displayValue(payoutTotals?.estimated ?? 0)}</strong></span></div>
+        <div className="payout-tooltip__row"><span>Total Held</span><span><strong>{displayValue(payoutTotals?.totalHeld ?? 0)}</strong></span></div>
       </div>
     );
   }

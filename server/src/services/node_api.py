@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import urllib.parse
 from datetime import datetime, timezone
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
-import urllib.parse
 
 from server.src.core.logging import get_logger
 
 from ..config import Settings, SourceDefinition
-from dataclasses import replace
+from .. import database
+from ..repositories.held_amounts import HeldAmountRepository
+from ..models import HeldAmount
 
 logger = get_logger(__name__)
 
@@ -48,6 +50,10 @@ class NodeData:
     download_payout: Optional[float] = None
     repair_payout: Optional[float] = None
     disk_payout: Optional[float] = None
+    # Sum of held amounts across satellites (optional)
+    total_held_amount: Optional[float] = None
+    # Timestamp of the last successful held-history fetch
+    last_held_history_at: Optional[datetime] = None
 
 
 @dataclass
@@ -58,6 +64,8 @@ class NodeRuntime:
     consecutive_failures: int = 0
     last_error: Optional[str] = None
     task: Optional[asyncio.Task] = None
+    # cached held amounts per satellite id -> amount
+    held_amounts: dict[str, Optional[float]] = field(default_factory=dict)
 
 
 class NodeApiService:
@@ -86,7 +94,9 @@ class NodeApiService:
             return
 
         if self._client is None:
-            self._client = httpx.AsyncClient(timeout=10.0)
+            # Follow redirects so servers that redirect to a trailing-slash
+            # URL (e.g. /api/sno -> /api/sno/) are handled transparently.
+            self._client = httpx.AsyncClient(timeout=10.0, follow_redirects=True)
 
         self._stop_event.clear()
 
@@ -180,6 +190,37 @@ class NodeApiService:
                 state.runtime.last_error = "payload processing failed"
             logger.debug(
                 "Node '%s' payload processing failed, consecutive failures=%d",
+                state.name,
+                state.runtime.consecutive_failures,
+            )
+            return
+
+        # Process the canonical /api/sno payload which may contain per-satellite
+        # information (including satellite ids). This helper mirrors the
+        # pattern used by the other processors and may populate the
+        # state.runtime.held_amounts cache by reading from the HeldAmount table.
+        sno_ok = await self._process_sno(client, state)
+        if not sno_ok:
+            async with self._lock:
+                state.runtime.consecutive_failures += 1
+                state.runtime.last_error = "payload processing failed"
+            logger.debug(
+                "Node '%s' /api/sno processing failed, consecutive failures=%d",
+                state.name,
+                state.runtime.consecutive_failures,
+            )
+            return
+
+        # Process held-history endpoint which may provide per-satellite held
+        # amounts directly. This mirrors other processing helpers: return
+        # early on failure and update runtime state on success.
+        held_ok = await self._process_held_history(client, state)
+        if not held_ok:
+            async with self._lock:
+                state.runtime.consecutive_failures += 1
+                state.runtime.last_error = "held-history processing failed"
+            logger.debug(
+                "Node '%s' /api/heldamount/held-history processing failed, consecutive failures=%d",
                 state.name,
                 state.runtime.consecutive_failures,
             )
@@ -292,9 +333,184 @@ class NodeApiService:
 
         return True
 
+
+    async def _process_sno(self, client: httpx.AsyncClient, state: NodeState) -> bool:
+        """Fetch and process the canonical /api/sno payload.
+
+        This endpoint may contain per-satellite information. When satellite
+        ids are found, populate the runtime.held_amounts cache from the
+        HeldAmount table for any missing entries.
+        """
+        success, payload = await self._fetch_node_payload(client, state, "/api/sno")
+        if not success or not payload:
+            return False
+
+        if not isinstance(payload, dict):
+            return False
+
+        # Attempt to extract satellite identifiers from a mapping or a list
+        sat_ids: list[str] = []
+        satellites = payload.get("satellites")
+        if isinstance(satellites, dict):
+            sat_ids = list(satellites.keys())
+        elif isinstance(satellites, list):
+            for item in satellites:
+                if isinstance(item, dict):
+                    sid = item.get("satelliteId") or item.get("satellite_id") or item.get("id")
+                    if isinstance(sid, str):
+                        sat_ids.append(sid)
+
+        if sat_ids:
+            # Determine which satellite ids we actually need to query while
+            # holding the lock to avoid races with other tasks mutating the
+            # runtime.held_amounts mapping.
+            async with self._lock:
+                existing = set(state.runtime.held_amounts.keys())
+            to_query = [sid for sid in sat_ids if sid not in existing]
+
+            if to_query:
+                new_values: dict[str, float] = {}
+                async with database.SessionFactory() as session:
+                    repo = HeldAmountRepository(session)
+                    for sid in to_query:
+                        try:
+                            rec = await repo.get_latest(state.name, sid)
+                            if rec is not None:
+                                new_values[sid] = rec.amount
+                        except Exception:
+                            logger.debug("Failed to query HeldAmount for %s/%s", state.name, sid)
+
+                if new_values:
+                    # Update the runtime mapping under the lock and refresh
+                    # the public total_held_amount so callers reading
+                    # NodeData see an up-to-date aggregated value.
+                    async with self._lock:
+                        state.runtime.held_amounts.update(new_values)
+                        # Compute total across known satellites (ignore None).
+                        # If there are no numeric values, leave as None to
+                        # indicate unknown; otherwise store the numeric sum
+                        # (0.0 is a valid total and should be preserved).
+                        total = 0.0
+                        numeric_count = 0
+                        for v in state.runtime.held_amounts.values():
+                            if v is None:
+                                continue
+                            try:
+                                total += float(v)
+                                numeric_count += 1
+                            except Exception:
+                                # Skip non-convertible values
+                                continue
+                        state.data.total_held_amount = total if numeric_count > 0 else None
+
+        return True
+
+
+    async def _process_held_history(self, client: httpx.AsyncClient, state: NodeState) -> bool:
+        """Fetch and process /api/heldamount/held-history payload.
+
+        The endpoint is expected to return a JSON object mapping satellite ids
+        to numeric held amounts, or a list of objects with satellite id and
+        amount. On success updates state.runtime.held_amounts and the
+        aggregated state.data.total_held_amount under the service lock.
+        """
+        # Decide whether we should query the held-history endpoint based on
+        # the configured interval to avoid excessive requests.
+        interval = max(1, int(self._settings.nodeapi_held_history_interval_seconds))
+        now = datetime.now(timezone.utc)
+        if state.data.last_held_history_at and (now - state.data.last_held_history_at).total_seconds() < interval:
+            return True
+
+        # fetch the held-history payload (may be a list)
+        success, payload = await self._fetch_node_payload(client, state, "/api/heldamount/held-history")
+        if not success or payload is None:
+            return False
+
+        # Normalize into a mapping satellite_id -> amount
+        mapping: dict[str, float] = {}
+
+        # This endpoint always returns a list of objects; reject other shapes
+        if not isinstance(payload, list):
+            return False
+
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+            sid = item.get("satelliteID")
+            amt = item.get("totalHeld")
+
+            if isinstance(sid, str):
+                try:
+                    val = float(amt) / 1000000.0
+                    mapping[sid] = val
+                except Exception:
+                    logger.warning("Non-numeric held amount for node %s satellite %s: %s", state.name, sid, amt)
+
+        if not mapping:
+            # nothing to update but it's still a successful fetch
+            return True
+
+        # Snapshot existing runtime values under the lock to determine which
+        # satellites changed. We intentionally do NOT hold the lock while
+        # performing DB writes to avoid blocking the poller.
+        async with self._lock:
+            existing_snapshot = dict(state.runtime.held_amounts)
+
+        # Determine which satellite values actually changed (including
+        # transitions from None->number or number->None). We only persist
+        # numeric values into the HeldAmount table (amount is non-nullable).
+        to_persist: dict[str, float] = {}
+        for sid, new_val in mapping.items():
+            prev_val = existing_snapshot.get(sid)
+            changed = prev_val is None or prev_val != float(new_val)
+
+            if changed:
+                to_persist[sid] = float(new_val)
+
+        # Persist any changed numeric held amounts to the DB without holding
+        # the runtime lock. Use a short-lived session and commit.
+        if to_persist:
+            now = datetime.now(timezone.utc)
+            try:
+                async with database.SessionFactory() as session:
+                    for sid, val in to_persist.items():
+                        rec = HeldAmount(
+                            source=state.name,
+                            satellite_id=sid,
+                            timestamp=now,
+                            amount=val,
+                        )
+                        session.add(rec)
+                    await session.flush()
+                    await session.commit()
+            except Exception:
+                logger.exception("Failed to persist HeldAmount records for node %s", state.name)
+                return False
+
+        # Update the timestamp of the last successful held-history fetch
+        async with self._lock:
+            state.data.last_held_history_at = now
+
+        # Update runtime mapping under lock and compute total
+        async with self._lock:
+            state.runtime.held_amounts.update(mapping)
+            total = 0.0
+            numeric_count = 0
+            for v in state.runtime.held_amounts.values():
+                if v is None:
+                    continue
+                try:
+                    total += float(v)
+                    numeric_count += 1
+                except Exception:
+                    continue
+            state.data.total_held_amount = total if numeric_count > 0 else None
+
+        return True
+
     async def _fetch_node_payload(
         self, client: httpx.AsyncClient, state: NodeState, path: str
-    ) -> Tuple[bool, Optional[Dict[str, Any]]]:
+    ) -> Tuple[bool, Optional[object]]:
         """Perform the HTTP GET and JSON parsing for a nodeapi URL.
 
         Returns a tuple: (success, payload). On success payload is a dict.
@@ -342,15 +558,21 @@ class NodeApiService:
             msg = "invalid JSON"
             return await _on_fail(msg, "Nodeapi response for %s was not valid JSON", full_url)
 
-        if not isinstance(payload, dict):
-            msg = "response is not a JSON object"
-            return await _on_fail(msg, "Nodeapi response for %s is not a JSON object; skipping", full_url)
+        # Accept either a JSON object or array; callers will validate the
+        # structure they expect (dict vs list).
+        if not isinstance(payload, (dict, list)):
+            msg = "response is not a JSON object or array"
+            # Log a concise warning (avoid logging raw HTTP body)
+            logger.warning("Nodeapi response for %s was not a JSON object/array.", full_url)
+            return await _on_fail(msg, "Nodeapi response for %s is not a JSON object/array; skipping", full_url)
 
         return True, payload
 
     async def _ensure_client(self) -> Optional[httpx.AsyncClient]:
         if self._client is None:
-            self._client = httpx.AsyncClient(timeout=10.0)
+            # Ensure the client follows redirects by default to avoid
+            # unnecessary HTTP status errors when endpoints redirect.
+            self._client = httpx.AsyncClient(timeout=10.0, follow_redirects=True)
         return self._client
 
     def _nodeapi_sources(self) -> List[SourceDefinition]:
