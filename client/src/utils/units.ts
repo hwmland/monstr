@@ -94,3 +94,9 @@ export const formatSizeValue = (value: number): string => {
   }
   return value.toFixed(2);
 };
+
+export const formatCurrency = (value: number | null | undefined): string => {
+  const v = Number(value ?? 0);
+  if (!Number.isFinite(v) || v === 0) return "$0.00";
+  return `$${v.toFixed(2)}`;
+};

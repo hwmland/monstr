@@ -87,7 +87,7 @@ python -m server.src.cli --source myNode:./testdata/node.log --source otherNode:
 
 Supported CLI flags
 
-- `--source NAME:SPEC` (repeatable) — Declare a log source in the preferred sequence. Use `NAME:PATH` for local log files or `NAME:HOST:PORT` for remote TCP sources. Repeat the flag to declare multiple sources; their declared order is preserved at startup.
+- `--source NAME:SPEC` (repeatable) — Declare a log source in the preferred sequence. Use `NAME:PATH` for local log files or `NAME:HOST:PORT` for remote TCP sources. Repeat the flag to declare multiple sources; their declared order is preserved at startup. Append `|http://localhost:14002` (or another HTTP(S) URL) to associate a nodeapi endpoint with the source.
 
   Implementation note: you can use the companion project `hwmland/tailsender` as a lightweight remote sender that tails a file and forwards appended lines to Monstr over TCP. Configure a tailsender instance on the remote host and point Monstr at it with `--source name:host:port`.
 
@@ -106,7 +106,7 @@ PowerShell (Windows) example that sets two nodes and enables the request-finish 
 
 ```powershell
 python -m server.src.cli \
-  --source Hashnode:.\testdata\hash.log \
+  --source Hashnode:.\testdata\hash.log|http://localhost:14002 \
   --source Blobnode:.\testdata\blob.log \
   --host 0.0.0.0 \
   --port 8000 \
@@ -118,7 +118,7 @@ Bash (macOS / Linux) equivalent:
 
 ```bash
 python -m server.src.cli \
-  --source Hashnode:./testdata/hash.log \
+  --source Hashnode:./testdata/hash.log|http://localhost:14002 \
   --source Blobnode:./testdata/blob.log \
   --host 0.0.0.0 \
   --port 8000 \
@@ -196,12 +196,12 @@ rest:
 <details>
 <summary>API output: /api/overall-status (click to expand)</summary>
 
-The `/api/overall-status` endpoint returns an `OverallStatusResponse` containing a `total` summary and a `nodes` array. Each entry follows the `NodeOverallMetrics` schema and contains reputation aggregates and short transfer windows. The request body is `OverallStatusRequest` (JSON `{ "nodes": [...] }`); omit or send an empty list to request all nodes.
+The `/api/overall-status` endpoint returns an `OverallStatusResponse` containing a `total` summary and a `nodes` mapping keyed by node name. Each value follows the `NodeOverallMetrics` schema and contains reputation aggregates and short transfer windows. The request body is `OverallStatusRequest` (JSON `{ "nodes": [...] }`); omit or send an empty list to request all nodes.
 
 Response shape (serialized field names shown):
 
 - `total` (object): aggregate `NodeOverallMetrics` across selected nodes.
-- `nodes` (array): list of `NodeOverallMetrics` objects for each node.
+- `nodes` (object): mapping where each property name is a node identifier and the value is a `NodeOverallMetrics` object for that node.
 
 NodeOverallMetrics fields:
 
@@ -209,6 +209,7 @@ NodeOverallMetrics fields:
 - `minOnline`, `minAudit`, `minSuspension` (float) — minimum reputation scores observed across satellites
 - `avgOnline`, `avgAudit`, `avgSuspension` (float) — simple averages of reputation scores
 - `minute1`, `minute3`, `minute5` (objects) — `TransferWindowMetrics` for 1/3/5 minute windows
+- `currentMonthPayout` (object) — optional payout summary for the current month gathered from each node's nodeapi. Fields: `estimatedPayout`, `heldBackPayout`, `downloadPayout`, `repairPayout`, `diskPayout`, `totalHeldPayout` (all numeric or null, in `USD`).
 
 TransferWindowMetrics fields (per window):
 
@@ -247,10 +248,18 @@ Example payload (matches current implementation):
     },
     "minute5": {
       /* ... */
+    },
+    "currentMonthPayout": {
+      "estimatedPayout": 123.45,
+      "heldBackPayout": 10.0,
+      "totalHeldPayout": 75.25,
+      "downloadPayout": 45.0,
+      "repairPayout": 2.5,
+      "diskPayout": 65.95
     }
   },
-  "nodes": [
-    {
+  "nodes": {
+    "hashnode": {
       "node": "hashnode",
       "minOnline": 0.99,
       "minAudit": 0.97,
@@ -275,9 +284,17 @@ Example payload (matches current implementation):
       },
       "minute5": {
         /* ... */
+      },
+      "currentMonthPayout": {
+        "estimatedPayout": 123.45,
+        "heldBackPayout": 10.0,
+        "totalHeldPayout": 75.25,
+        "downloadPayout": 45.0,
+        "repairPayout": 2.5,
+        "diskPayout": 65.95
       }
     }
-  ]
+  }
 }
 ```
 
@@ -392,7 +409,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-  MONSTR_SOURCES="hashnode:/logs/hash.log,blobnode:/logs/blob.log"
+      MONSTR_SOURCES="hashnode:/logs/hash.log|http://localhost:14002,blobnode:/logs/blob.log"
       MONSTR_LOG_OVERRIDES="root:INFO,services.cleanup:WARNING"
     volumes:
       - ./testdata:/logs:ro

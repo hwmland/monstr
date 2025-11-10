@@ -13,7 +13,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import aiofiles
 import socket
-
 from ..config import Settings
 from .. import database
 from ..repositories.log_entries import LogEntryRepository
@@ -83,62 +82,49 @@ class LogMonitorService:
         self._unprocessed_prefix = "unprocessed"
 
     async def start(self) -> None:
-        # If no sources are configured, warn and return
-        if not getattr(self._settings, "sources", None):
-            logger.warning("Log monitoring started without any nodes configured.")
-            return
-
-        # Prefer an ordered mixed sources declaration if provided. The
-        # Settings implementation exposes `sources` (mixed list) which allows the
-        # user to define local and remote nodes in the desired sequence. If that
-        # isn't present, fall back to the separate parsed lists.
         try:
-            if getattr(self._settings, "sources", None):
-                # Iterate declared sources and start watchers in order. Each raw
-                # source may be either NAME:PATH (file) or NAME:HOST:PORT (remote).
-                for raw in self._settings.sources:
-                    # attempt remote parsing first (NAME:HOST:PORT)
-                    parts = raw.split(":")
-                    if len(parts) == 3:
-                        node_name, host, port_spec = parts
-                        node_name = node_name.strip()
-                        host = host.strip()
-                        port = int(port_spec.strip())
-                        logger.info(
-                            "Starting remote watcher for node '%s' at %s:%d",
-                            node_name,
-                            host,
-                            port,
-                        )
-                        task = asyncio.create_task(
-                            self._watch_remote(node_name, host, port),
-                            name=f"remote-watch:{node_name}",
-                        )
-                        self._tasks.append(task)
-                        continue
-
-                    # otherwise treat as file node NAME:PATH
-                    if ":" in raw:
-                        node_name, path_spec = raw.split(":", 1)
-                        node_name = node_name.strip()
-                        from pathlib import Path
-
-                        path = Path(path_spec.strip()).expanduser().resolve()
-                        logger.info(
-                            "Starting file watcher for node '%s' at %s", node_name, path
-                        )
-                        task = asyncio.create_task(
-                            self._watch_file(node_name, path), name=f"log-watch:{node_name}"
-                        )
-                        self._tasks.append(task)
-                        continue
-
-                    logger.warning("Ignoring invalid source declaration: %s", raw)
-            # The logic above handles starting watchers from the ordered
-            # `sources` list; there is no fallback to legacy separate lists.
+            sources = self._settings.parsed_sources
         except ValueError as exc:
             logger.error("Failed to parse node configuration: %s", exc)
             return
+
+        if not sources:
+            logger.warning("Log monitoring started without any nodes configured.")
+            return
+
+        for source in sources:
+            if source.kind == "file" and source.path is not None:
+                logger.info(
+                    "Starting file watcher for node '%s' at %s",
+                    source.name,
+                    source.path,
+                )
+                task = asyncio.create_task(
+                    self._watch_file(source.name, source.path),
+                    name=f"log-watch:{source.name}",
+                )
+                self._tasks.append(task)
+                continue
+
+            if source.kind == "tcp" and source.host is not None and source.port is not None:
+                logger.info(
+                    "Starting remote watcher for node '%s' at %s:%d",
+                    source.name,
+                    source.host,
+                    source.port,
+                )
+                task = asyncio.create_task(
+                    self._watch_remote(source.name, source.host, source.port),
+                    name=f"remote-watch:{source.name}",
+                )
+                self._tasks.append(task)
+                continue
+
+            logger.warning(
+                "Skipping source '%s' due to unsupported configuration: %s",
+                source.name,
+                source,
+            )
 
     async def stop(self) -> None:
         self._stopping.set()

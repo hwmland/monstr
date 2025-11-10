@@ -247,6 +247,7 @@ class TransferGroupedFilters(BaseModel):
 class NodeConfig(BaseModel):
     name: str = Field(..., description="Node identifier configured in settings")
     path: str = Field(..., description="Absolute path to the node log file")
+    nodeapi: Optional[str] = Field(default=None, description="Optional HTTP(S) node API endpoint (nodeapi)")
 
 
 class DataDistributionRequest(BaseModel):
@@ -327,6 +328,29 @@ class OverallStatusRequest(BaseModel):
     nodes: list[str] = Field(default_factory=list, description="Nodes to include; empty means all nodes")
 
 
+class PayoutCurrentRequest(BaseModel):
+    nodes: list[str] = Field(default_factory=list, description="Nodes to include; empty means all nodes")
+
+
+class PayoutNode(BaseModel):
+    joined_at: Optional[datetime] = Field(default=None, serialization_alias="joinedAt")
+    last_estimated_payout_at: Optional[datetime] = Field(default=None, serialization_alias="lastEstimatedPayoutAt")
+    estimated_payout: Optional[float] = Field(default=None, serialization_alias="estimatedPayout")
+    held_back_payout: Optional[float] = Field(default=None, serialization_alias="heldBackPayout")
+    total_held_payout: Optional[float] = Field(default=None, serialization_alias="totalHeldPayout")
+    download_payout: Optional[float] = Field(default=None, serialization_alias="downloadPayout")
+    repair_payout: Optional[float] = Field(default=None, serialization_alias="repairPayout")
+    disk_payout: Optional[float] = Field(default=None, serialization_alias="diskPayout")
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class PayoutCurrentResponse(BaseModel):
+    nodes: dict[str, PayoutNode] = Field(default_factory=dict)
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
 class TransferWindowMetrics(BaseModel):
     download_size: int = Field(default=0, serialization_alias="downloadSize")
     upload_size: int = Field(default=0, serialization_alias="uploadSize")
@@ -358,11 +382,37 @@ class NodeOverallMetrics(BaseModel):
     minute3: TransferWindowMetrics = Field(default_factory=TransferWindowMetrics)
     minute5: TransferWindowMetrics = Field(default_factory=TransferWindowMetrics)
 
+    # current month payout information gathered from nodeapi (optional)
+    class CurrentMonthPayout(BaseModel):
+        estimated_payout: Optional[float] = Field(default=None, serialization_alias="estimatedPayout", validation_alias="estimatedPayout")
+        held_back_payout: Optional[float] = Field(default=None, serialization_alias="heldBackPayout", validation_alias="heldBackPayout")
+        download_payout: Optional[float] = Field(default=None, serialization_alias="downloadPayout", validation_alias="downloadPayout")
+        repair_payout: Optional[float] = Field(default=None, serialization_alias="repairPayout", validation_alias="repairPayout")
+        disk_payout: Optional[float] = Field(default=None, serialization_alias="diskPayout", validation_alias="diskPayout")
+        total_held_payout: Optional[float] = Field(default=None, serialization_alias="totalHeldPayout", validation_alias="totalHeldPayout")
+
+        model_config = ConfigDict(populate_by_name=True)
+
+    current_month_payout: CurrentMonthPayout = Field(default_factory=CurrentMonthPayout, serialization_alias="currentMonthPayout")
+
     model_config = ConfigDict(populate_by_name=True)
 
 
 class OverallStatusResponse(BaseModel):
     total: NodeOverallMetrics
-    nodes: list[NodeOverallMetrics] = Field(default_factory=list)
+    nodes: dict[str, NodeOverallMetrics] = Field(default_factory=dict)
 
-    model_config = ConfigDict(populate_by_name=True)
+
+class HeldAmountFilters(BaseModel):
+    source: Optional[str] = Field(default=None, description="Filter by node/source name")
+    satellite_id: Optional[str] = Field(default=None, serialization_alias="satelliteId", validation_alias="satelliteId")
+    limit: int = Field(default=100, ge=1, le=1000)
+
+
+class HeldAmountRead(BaseModel):
+    id: int
+    source: str
+    satellite_id: str = Field(serialization_alias="satelliteId")
+    timestamp: datetime
+    amount: float
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)

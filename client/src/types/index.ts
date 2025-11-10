@@ -52,3 +52,14 @@ export interface TransferActualAggregated {
   download: TransferActualMetrics;
   upload: TransferActualMetrics;
 }
+
+export interface PayoutNode {
+  joinedAt?: string | null;
+  lastEstimatedPayoutAt?: string | null;
+  estimatedPayout?: number | null;
+  heldBackPayout?: number | null;
+  totalHeldPayout?: number | null;
+  downloadPayout?: number | null;
+  repairPayout?: number | null;
+  diskPayout?: number | null;
+}

@@ -1,9 +1,20 @@
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Literal
 import json
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+@dataclass(frozen=True)
+class SourceDefinition:
+    name: str
+    kind: Literal["file", "tcp"]
+    path: Optional[Path] = None
+    host: Optional[str] = None
+    port: Optional[int] = None
+    nodeapi: Optional[str] = None
 
 
 class Settings(BaseSettings):
@@ -27,6 +38,13 @@ class Settings(BaseSettings):
     # decoding on simple comma-separated env strings.
     sources: str | List[str] = []
     log_batch_size: int = 32
+    nodeapi_poll_interval_seconds: int = 60
+    # Interval (seconds) after which the estimated-payout endpoint should be
+    # re-queried for fresh payout estimates. Default: 5 minutes.
+    nodeapi_estimated_payout_interval_seconds: int = 300
+    # Interval (seconds) after which the held-history endpoint should be
+    # re-queried for fresh per-satellite held amounts. Default: 5 minutes.
+    nodeapi_held_history_interval_seconds: int = 300
 
     cleanup_interval_seconds: int = 300
     grouping_interval_seconds: int = 120
@@ -112,6 +130,68 @@ class Settings(BaseSettings):
             base_dir = Path(__file__).resolve().parent.parent
             candidate = (base_dir / candidate).resolve()
         return candidate
+
+    @property
+    def parsed_sources(self) -> List[SourceDefinition]:
+        """Return structured source definitions parsed from `sources`."""
+        parsed: List[SourceDefinition] = []
+        for raw in self.sources or []:
+            if not raw:
+                continue
+
+            nodeapi: Optional[str] = None
+            base = raw
+            if "|" in raw:
+                base, nodeapi = raw.split("|", 1)
+                nodeapi = nodeapi.strip() or None
+
+            if ":" not in base:
+                raise ValueError(f"Invalid source declaration '{raw}'; expected NAME:SPEC")
+
+            name, spec = base.split(":", 1)
+            name = name.strip()
+            spec = spec.strip()
+
+            if not name:
+                raise ValueError(f"Source '{raw}' is missing a node name")
+
+            if self._looks_like_host_port(spec):
+                host, port = self._parse_host_port(spec)
+                parsed.append(SourceDefinition(name=name, kind="tcp", host=host, port=port, nodeapi=nodeapi))
+            else:
+                path = Path(spec).expanduser().resolve()
+                parsed.append(SourceDefinition(name=name, kind="file", path=path, nodeapi=nodeapi))
+        return parsed
+
+    @staticmethod
+    def _looks_like_host_port(spec: str) -> bool:
+        spec = spec.strip()
+        if not spec:
+            return False
+        # IPv6 literal: [addr]:port
+        if spec.startswith("[") and "]" in spec:
+            host_part, _, port_part = spec.partition("]:")
+            return bool(port_part and port_part.isdigit())
+        # Simple host:port, ensure no path separators to avoid mis-detecting file paths
+        if ":" not in spec:
+            return False
+        host, port = spec.rsplit(":", 1)
+        if not port.isdigit():
+            return False
+        if "/" in host or "\\" in host:
+            return False
+        return bool(host)
+
+    @staticmethod
+    def _parse_host_port(spec: str) -> Tuple[str, int]:
+        spec = spec.strip()
+        if spec.startswith("[") and "]" in spec:
+            host_part, _, port_part = spec.partition("]:")
+            host = host_part.lstrip("[")
+            port = int(port_part)
+            return host, port
+        host, port = spec.rsplit(":", 1)
+        return host.strip(), int(port.strip())
 
     @property
     def unprocessed_log_directory(self) -> Path:
