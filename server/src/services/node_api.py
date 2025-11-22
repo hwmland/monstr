@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import urllib.parse
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass, field, replace
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -13,8 +13,11 @@ from server.src.core.logging import get_logger
 
 from ..config import Settings, SourceDefinition
 from .. import database
+from sqlalchemy import delete
+
 from ..repositories.held_amounts import HeldAmountRepository
-from ..models import HeldAmount
+from ..repositories.paystubs import PaystubRepository
+from ..models import HeldAmount, Paystub
 
 logger = get_logger(__name__)
 
@@ -66,6 +69,8 @@ class NodeRuntime:
     task: Optional[asyncio.Task] = None
     # cached held amounts per satellite id -> amount
     held_amounts: dict[str, Optional[float]] = field(default_factory=dict)
+    last_paystub_at: Optional[datetime] = None
+    last_paystub_period: Optional[str] = None
 
 
 class NodeApiService:
@@ -242,6 +247,18 @@ class NodeApiService:
             )
             return
 
+        paystubs_ok = await self._fetch_paystubs(client, state)
+        if not paystubs_ok:
+            async with self._lock:
+                state.runtime.consecutive_failures += 1
+                state.runtime.last_error = "paystubs fetch failed"
+            logger.debug(
+                "Node '%s' paystubs fetch failed, consecutive failures=%d",
+                state.name,
+                state.runtime.consecutive_failures,
+            )
+            return
+
         # All good — update node state in a single locked section.
         fetched_at = datetime.now(timezone.utc)
         async with self._lock:
@@ -250,6 +267,153 @@ class NodeApiService:
             state.runtime.last_error = None
 
         logger.debug("Stored nodeapi snapshot for node '%s'", state.name)
+
+    async def _fetch_paystubs(self, client: httpx.AsyncClient, state: NodeState) -> bool:
+        """Placeholder paystubs fetch gated by its own refresh interval."""
+        interval = max(1, int(self._settings.nodeapi_paystub_interval_seconds))
+        now = datetime.now(timezone.utc)
+        current_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        previous_month_day = current_month_start - timedelta(days=1)
+        expected_period = f"{previous_month_day.year:04d}-{previous_month_day.month:02d}"
+        logger.debug("Expected paystub period for node %s is %s", state.name, expected_period)
+        async with self._lock:
+            last_at = state.runtime.last_paystub_at
+            existing_period = state.runtime.last_paystub_period
+        if last_at and (now - last_at).total_seconds() < interval:
+            return True
+
+        latest_period: Optional[str] = existing_period
+        if latest_period is None:
+            try:
+                async with database.SessionFactory() as session:
+                    repo = PaystubRepository(session)
+                    db_period = await repo.get_latest_period(state.name)
+                    if db_period is not None:
+                        latest_period = db_period
+            except Exception:
+                logger.exception("Failed to read paystub records for node %s", state.name)
+                return False
+
+        if latest_period and latest_period >= expected_period:
+            async with self._lock:
+                state.runtime.last_paystub_at = now
+            return True
+
+        if latest_period is None:
+            from_period = "2000-01"
+        else:
+            try:
+                latest_year, latest_month = latest_period.split("-")
+                year = int(latest_year)
+                month = int(latest_month)
+                month += 1
+                if month > 12:
+                    month = 1
+                    year += 1
+                from_period = f"{year:04d}-{month:02d}"
+            except Exception:
+                logger.debug("Failed to parse latest paystub period '%s' for node %s", latest_period, state.name)
+                from_period = "2000-01"
+
+        path = f"/api/heldamount/paystubs/{from_period}/{expected_period}"
+        success, payload = await self._fetch_node_payload(client, state, path)
+        if not success:
+            return False
+
+        if payload is None:
+            logger.debug("No new paystub data for node %s", state.name)
+            async with self._lock:
+                state.runtime.last_paystub_at = now
+            return True
+
+        if not isinstance(payload, list):
+            logger.debug("Unexpected paystub payload shape for node %s: %s", state.name, type(payload))
+            return False
+
+        records: list[Paystub] = []
+        max_processed_period: Optional[str] = None
+
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+
+            satellite_id = item.get("satelliteId")
+            period_value = item.get("period")
+            created_value = item.get("created")
+            if not isinstance(satellite_id, str) or not isinstance(period_value, str) or not isinstance(created_value, str):
+                continue
+
+            created_str = created_value
+            if created_str.endswith("Z"):
+                created_str = created_str[:-1] + "+00:00"
+            try:
+                created_dt = datetime.fromisoformat(created_str)
+            except ValueError:
+                logger.debug("Failed to parse paystub created timestamp '%s' for node %s", created_value, state.name)
+                continue
+
+            def to_float(value: Any) -> float:
+                try:
+                    return float(value)
+                except Exception:
+                    return 0.0
+
+            record = Paystub(
+                source=state.name,
+                satellite_id=satellite_id,
+                period=period_value,
+                created=created_dt,
+                usage_at_rest=to_float(item.get("usageAtRest")),
+                usage_get=to_float(item.get("usageGet")),
+                usage_put=to_float(item.get("usagePut")),
+                usage_get_repair=to_float(item.get("usageGetRepair")),
+                usage_put_repair=to_float(item.get("usagePutRepair")),
+                usage_get_audit=to_float(item.get("usageGetAudit")),
+                comp_at_rest=to_float(item.get("compAtRest")) / 1e6,
+                comp_get=to_float(item.get("compGet")) / 1e6,
+                comp_put=to_float(item.get("compPut")) / 1e6,
+                comp_get_repair=to_float(item.get("compGetRepair")) / 1e6,
+                comp_put_repair=to_float(item.get("compPutRepair")) / 1e6,
+                comp_get_audit=to_float(item.get("compGetAudit")) / 1e6,
+                surge_percent=to_float(item.get("surgePercent")),
+                held=to_float(item.get("held")) / 1e6,
+                owed=to_float(item.get("owed")) / 1e6,
+                disposed=to_float(item.get("disposed")) / 1e6,
+                paid=to_float(item.get("paid")) / 1e6,
+                distributed=to_float(item.get("distributed")) / 1e6,
+            )
+            records.append(record)
+
+            if max_processed_period is None or period_value > max_processed_period:
+                max_processed_period = period_value
+
+        if not records:
+            logger.debug("No valid paystub entries to persist for node %s", state.name)
+            async with self._lock:
+                state.runtime.last_paystub_at = now
+            return True
+
+        try:
+            async with database.SessionFactory() as session:
+                for rec in records:
+                    await session.merge(rec)
+                await session.commit()
+        except Exception:
+            logger.exception("Failed to persist paystub records for node %s", state.name)
+            return False
+
+        logger.debug(
+            "Persisted %d paystub record(s) for node %s (max period=%s)",
+            len(records),
+            state.name,
+            max_processed_period,
+        )
+
+        async with self._lock:
+            state.runtime.last_paystub_at = now
+            if max_processed_period is not None:
+                state.runtime.last_paystub_period = max_processed_period
+        return True
 
     async def _fetch_estimated_payout(self, client: httpx.AsyncClient, state: NodeState) -> bool:
         """Fetch /api/sno/estimated-payout if last fetch is older than configured interval.
@@ -560,6 +724,9 @@ class NodeApiService:
 
         # Accept either a JSON object or array; callers will validate the
         # structure they expect (dict vs list).
+        if payload is None:
+            return True, None
+
         if not isinstance(payload, (dict, list)):
             msg = "response is not a JSON object or array"
             # Log a concise warning (avoid logging raw HTTP body)

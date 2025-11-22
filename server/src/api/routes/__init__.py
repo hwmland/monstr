@@ -9,6 +9,7 @@ from . import (
 	loggers,
 	payout,
 	held_amounts,
+	paystubs,
 )
 
 
@@ -23,4 +24,5 @@ __all__ = [
 	"loggers",
 	"payout",
 	"held_amounts",
+	"paystubs",
 ]

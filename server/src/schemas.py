@@ -416,3 +416,37 @@ class HeldAmountRead(BaseModel):
     timestamp: datetime
     amount: float
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class PaystubFilters(BaseModel):
+    source: Optional[str] = Field(default=None, description="Filter by node/source name")
+    satellite_id: Optional[str] = Field(default=None, serialization_alias="satelliteId", validation_alias="satelliteId")
+    period: Optional[str] = Field(default=None, description="Filter by billing period identifier")
+    limit: int = Field(default=100, ge=1, le=1000)
+
+
+class PaystubRead(BaseModel):
+    source: str
+    satellite_id: str = Field(serialization_alias="satelliteId")
+    period: str
+    created: datetime
+    usage_at_rest: float = Field(serialization_alias="usageAtRest")
+    usage_get: float = Field(serialization_alias="usageGet")
+    usage_put: float = Field(serialization_alias="usagePut")
+    usage_get_repair: float = Field(serialization_alias="usageGetRepair")
+    usage_put_repair: float = Field(serialization_alias="usagePutRepair")
+    usage_get_audit: float = Field(serialization_alias="usageGetAudit")
+    comp_at_rest: float = Field(serialization_alias="compAtRest")
+    comp_get: float = Field(serialization_alias="compGet")
+    comp_put: float = Field(serialization_alias="compPut")
+    comp_get_repair: float = Field(serialization_alias="compGetRepair")
+    comp_put_repair: float = Field(serialization_alias="compPutRepair")
+    comp_get_audit: float = Field(serialization_alias="compGetAudit")
+    surge_percent: float = Field(serialization_alias="surgePercent")
+    held: float
+    owed: float
+    disposed: float
+    paid: float
+    distributed: float
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
