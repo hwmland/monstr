@@ -10,4 +10,6 @@ declare module "recharts" {
   export const Tooltip: ComponentType<any>;
   export const Legend: ComponentType<any>;
   export const LabelList: ComponentType<any>;
+  export const Cell: ComponentType<any>;
+  export const ReferenceLine: ComponentType<any>;
 }

@@ -48,7 +48,7 @@ const HourlyTrafficPanel: FC = () => {
     setError(null);
     try {
         const requestNodes = selectedNodes.includes("All") ? [] : selectedNodes;
-        const res = await fetchIntervalTransfers(requestNodes, '1h', 8);
+        const res = await fetchIntervalTransfers(requestNodes, '1h', 9);
       setStartTime(res.startTime ?? null);
       setEndTime(res.endTime ?? null);
       setData(Array.isArray(res.buckets) ? res.buckets : []);
