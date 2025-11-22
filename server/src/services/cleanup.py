@@ -40,11 +40,16 @@ class CleanupService:
 
     async def _run(self) -> None:
         while not self._stop_event.is_set():
-            # Compute per-table cutoffs using configured per-table or global retention
+            # Compute per-table cutoffs using configured per-table or global retention.
+            # A retention of -1 means "never delete" for that table and we skip deletion.
             now = datetime.now(timezone.utc)
-            cutoff_logs = now - timedelta(minutes=self._settings.get_retention_minutes("log_entries"))
-            cutoff_transfers = now - timedelta(minutes=self._settings.get_retention_minutes("transfers"))
-            cutoff_grouped = now - timedelta(minutes=self._settings.get_retention_minutes("transfer_grouped"))
+            retention_logs = self._settings.get_retention_minutes("log_entries")
+            retention_transfers = self._settings.get_retention_minutes("transfers")
+            retention_grouped = self._settings.get_retention_minutes("transfer_grouped")
+
+            cutoff_logs = None if retention_logs == -1 else now - timedelta(minutes=retention_logs)
+            cutoff_transfers = None if retention_transfers == -1 else now - timedelta(minutes=retention_transfers)
+            cutoff_grouped = None if retention_grouped == -1 else now - timedelta(minutes=retention_grouped)
             try:
                 async with database.SessionFactory() as session:
                     log_repository = LogEntryRepository(session)
@@ -54,36 +59,48 @@ class CleanupService:
                     # Time each deletion step so operators can see which stages take
                     # the most time during cleanup cycles. Use wall-clock `time.time()`
                     # which is sufficient for coarse measurements (milliseconds).
-                    t0 = time.time()
-                    try:
-                        deleted_logs = await log_repository.delete_older_than(cutoff_logs)
-                    except Exception:  # noqa: BLE001
+                    if cutoff_logs is None:
                         deleted_logs = 0
-                        logger.exception("Failed deleting expired log entries")
-                    t_logs = (time.time() - t0) * 1000.0
-                    logger.info("Deleted %d expired log entries in %.2fms", deleted_logs, t_logs)
+                        logger.debug("Skipping log_entries cleanup because retention is set to -1")
+                    else:
+                        t0 = time.time()
+                        try:
+                            deleted_logs = await log_repository.delete_older_than(cutoff_logs)
+                        except Exception:  # noqa: BLE001
+                            deleted_logs = 0
+                            logger.exception("Failed deleting expired log entries")
+                        t_logs = (time.time() - t0) * 1000.0
+                        logger.info("Deleted %d expired log entries in %.2fms", deleted_logs, t_logs)
 
-                    t0 = time.time()
-                    try:
-                        deleted_transfers = await transfer_repository.delete_older_than(cutoff_transfers)
-                    except Exception:  # noqa: BLE001
+                    if cutoff_transfers is None:
                         deleted_transfers = 0
-                        logger.exception("Failed deleting expired transfers")
-                    t_transfers = (time.time() - t0) * 1000.0
-                    logger.info("Deleted %d expired transfers in %.2fms", deleted_transfers, t_transfers)
+                        logger.debug("Skipping transfers cleanup because retention is set to -1")
+                    else:
+                        t0 = time.time()
+                        try:
+                            deleted_transfers = await transfer_repository.delete_older_than(cutoff_transfers)
+                        except Exception:  # noqa: BLE001
+                            deleted_transfers = 0
+                            logger.exception("Failed deleting expired transfers")
+                        t_transfers = (time.time() - t0) * 1000.0
+                        logger.info("Deleted %d expired transfers in %.2fms", deleted_transfers, t_transfers)
 
-                    t0 = time.time()
-                    try:
-                        deleted_grouped = await grouped_repository.delete_older_than(cutoff_grouped)
-                    except Exception:  # noqa: BLE001
+                    if cutoff_grouped is None:
                         deleted_grouped = 0
-                        logger.exception("Failed deleting expired grouped transfer aggregates")
-                    t_grouped = (time.time() - t0) * 1000.0
-                    logger.info(
-                        "Deleted %d expired grouped transfer aggregates in %.2fms",
-                        deleted_grouped,
-                        t_grouped,
-                    )
+                        logger.debug("Skipping transfer_grouped cleanup because retention is set to -1")
+                    else:
+                        t0 = time.time()
+                        try:
+                            deleted_grouped = await grouped_repository.delete_older_than(cutoff_grouped)
+                        except Exception:  # noqa: BLE001
+                            deleted_grouped = 0
+                            logger.exception("Failed deleting expired grouped transfer aggregates")
+                        t_grouped = (time.time() - t0) * 1000.0
+                        logger.info(
+                            "Deleted %d expired grouped transfer aggregates in %.2fms",
+                            deleted_grouped,
+                            t_grouped,
+                        )
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001

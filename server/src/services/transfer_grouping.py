@@ -14,6 +14,7 @@ from sqlalchemy import select
 from ..models import Transfer, TransferGrouped
 from ..repositories.transfers import TransferRepository
 from ..repositories.transfer_grouped import TransferGroupedRepository
+from sqlalchemy.exc import OperationalError
 
 logger = get_logger(__name__)
 
@@ -76,6 +77,11 @@ class TransferGroupingService:
                     await self._promote_groups(grouped_repo, from_gran=1, to_gran=5, min_old_minutes=120, newest_threshold_minutes=90)
                     t1 = time.time()
                     logger.info("TransferGroupingService: promote groups completed in %.2fms", (t1 - t0) * 1000.0)
+                    # Promote 5-minute groups into 60-minute groups when possible and time it.
+                    t0 = time.time()
+                    await self._promote_groups(grouped_repo, from_gran=5, to_gran=60, min_old_minutes=36 * 60, newest_threshold_minutes=31 * 60)
+                    t1 = time.time()
+                    logger.info("TransferGroupingService: promote 5->60 groups completed in %.2fms", (t1 - t0) * 1000.0)
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001
@@ -263,15 +269,33 @@ class TransferGroupingService:
         )
 
         # flush changes and commit the transaction managed by the session context
-        flush_t0 = time.perf_counter()
-        await grouped_repo._session.flush()
-        flush_t1 = time.perf_counter()
-        logger.debug("_process_batch: flush completed in %.2fms", (flush_t1 - flush_t0) * 1000.0)
+        # Attempt to flush and commit; on OperationalError (e.g. DB locked/read-only)
+        # abort this transformation cycle and roll back so the next run can try again.
+        try:
+            flush_t0 = time.perf_counter()
+            await grouped_repo._session.flush()
+            flush_t1 = time.perf_counter()
+            logger.debug("_process_batch: flush completed in %.2fms", (flush_t1 - flush_t0) * 1000.0)
+        except OperationalError as exc:
+            logger.warning("_process_batch: flush failed due to DB error; aborting this cycle: %s", exc)
+            try:
+                await grouped_repo._session.rollback()
+            except Exception:
+                logger.exception("Failed to rollback session after flush error")
+            return
 
-        commit_t0 = time.perf_counter()
-        await grouped_repo._session.commit()
-        commit_t1 = time.perf_counter()
-        logger.debug("_process_batch: commit completed in %.2fms", (commit_t1 - commit_t0) * 1000.0)
+        try:
+            commit_t0 = time.perf_counter()
+            await grouped_repo._session.commit()
+            commit_t1 = time.perf_counter()
+            logger.debug("_process_batch: commit completed in %.2fms", (commit_t1 - commit_t0) * 1000.0)
+        except OperationalError as exc:
+            logger.warning("_process_batch: commit failed due to DB error; rolling back and aborting this cycle: %s", exc)
+            try:
+                await grouped_repo._session.rollback()
+            except Exception:
+                logger.exception("Failed to rollback session after commit error")
+            return
         logger.info("Created %d grouped records and processed %d transfers", len(created), len(processed_ids))
     async def _promote_groups(
         self,
@@ -441,15 +465,32 @@ class TransferGroupingService:
             (del_t1 - del_t0) * 1000.0,
         )
 
-        flush_t0 = time.perf_counter()
-        await grouped_repo._session.flush()
-        flush_t1 = time.perf_counter()
-        logger.debug("_promote_groups: flush completed in %.2fms", (flush_t1 - flush_t0) * 1000.0)
+        # Attempt to flush/commit; on DB OperationalError, roll back and abort
+        try:
+            flush_t0 = time.perf_counter()
+            await grouped_repo._session.flush()
+            flush_t1 = time.perf_counter()
+            logger.debug("_promote_groups: flush completed in %.2fms", (flush_t1 - flush_t0) * 1000.0)
+        except OperationalError as exc:
+            logger.warning("_promote_groups: flush failed due to DB error; aborting promotion: %s", exc)
+            try:
+                await grouped_repo._session.rollback()
+            except Exception:
+                logger.exception("_promote_groups: Failed to rollback after flush error")
+            return
 
-        commit_t0 = time.perf_counter()
-        await grouped_repo._session.commit()
-        commit_t1 = time.perf_counter()
-        logger.debug("_promote_groups: commit completed in %.2fms", (commit_t1 - commit_t0) * 1000.0)
+        try:
+            commit_t0 = time.perf_counter()
+            await grouped_repo._session.commit()
+            commit_t1 = time.perf_counter()
+            logger.debug("_promote_groups: commit completed in %.2fms", (commit_t1 - commit_t0) * 1000.0)
+        except OperationalError as exc:
+            logger.warning("_promote_groups: commit failed due to DB error; rolling back and aborting promotion: %s", exc)
+            try:
+                await grouped_repo._session.rollback()
+            except Exception:
+                logger.exception("_promote_groups: Failed to rollback after commit error")
+            return
 
         logger.info(
             "Promoted %d records from %d->%d minute granularity into %d records",

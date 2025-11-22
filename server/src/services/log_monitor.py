@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import contextlib
 import json
 from server.src.core.logging import get_logger
@@ -12,6 +13,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import aiofiles
+from sqlalchemy.exc import OperationalError
+import json
 import socket
 from ..config import Settings
 from .. import database
@@ -429,21 +432,52 @@ class LogMonitorService:
         log_count = len(log_buffer)
         transfer_count = len(transfer_buffer)
         reputation_count = len(reputation_buffer)
+        # If DB writes for this node are currently suspended, skip attempting
+        # writes and return; buffers are retained in memory and will be retried
+        # on the next flush attempt after suspension expires.
+        suspensions = getattr(self, "_db_write_suspensions", None) or {}
+        node_key = node_name or "__global__"
+        now_ts = time.time()
+        suspend_until = suspensions.get(node_key)
+        if suspend_until is not None and now_ts < suspend_until:
+            remaining = int(suspend_until - now_ts)
+            logger.debug(
+                "DB writes currently suspended for node %s (retry in %d seconds); deferring flush",
+                node_key,
+                remaining,
+            )
+            return
 
-        async with database.SessionFactory() as session:
-            log_repository = LogEntryRepository(session)
-            transfer_repository = TransferRepository(session)
-            reputation_repository = ReputationRepository(session)
+        # Single attempt to write; on OperationalError (e.g., DB locked/read-only)
+        # suspend DB writes for a configured period and keep buffers in memory.
+        try:
+            async with database.SessionFactory() as session:
+                log_repository = LogEntryRepository(session)
+                transfer_repository = TransferRepository(session)
+                reputation_repository = ReputationRepository(session)
 
-            if log_buffer:
-                await log_repository.create_many(log_buffer)
-                log_buffer.clear()
-            if transfer_buffer:
-                await transfer_repository.create_many(transfer_buffer)
-                transfer_buffer.clear()
-            if reputation_buffer:
-                await reputation_repository.upsert_many(reputation_buffer)
-                reputation_buffer.clear()
+                if log_buffer:
+                    await log_repository.create_many(log_buffer)
+                    log_buffer.clear()
+                if transfer_buffer:
+                    await transfer_repository.create_many(transfer_buffer)
+                    transfer_buffer.clear()
+                if reputation_buffer:
+                    await reputation_repository.upsert_many(reputation_buffer)
+                    reputation_buffer.clear()
+        except OperationalError as exc:
+            suspend_secs = getattr(self._settings, "db_write_suspend_seconds", 60)
+            suspend_until = time.time() + suspend_secs
+            if not hasattr(self, "_db_write_suspensions") or self._db_write_suspensions is None:
+                self._db_write_suspensions = {}
+            self._db_write_suspensions[node_name or "__global__"] = suspend_until
+            logger.warning(
+                "DB write failed while flushing buffers; suspending DB writes for %d seconds: %s",
+                suspend_secs,
+                exc,
+            )
+            # Do not clear buffers; they are retained in memory and will be retried later.
+            return
 
         if node_name:
             logger.info(

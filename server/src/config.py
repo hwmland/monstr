@@ -48,12 +48,16 @@ class Settings(BaseSettings):
 
     cleanup_interval_seconds: int = 300
     grouping_interval_seconds: int = 120
+    # If the database cannot be written to (e.g., during external backups),
+    # suspend attempts for this many seconds to allow external operations to finish.
+    # During suspension the in-memory buffers will be retained.
+    db_write_suspend_seconds: int = 60
     # Global default retention (used as a fallback)
     retention_minutes: int = 1440 * 7 * 4  # 4 weeks in minutes
     # Per-table retention overrides (in minutes)
     retention_transfers_minutes: int = 1440  # 1 day in minutes
     retention_log_entries_minutes: int = 1440 * 7 * 4  # 4 weeks in minutes
-    retention_transfer_grouped_minutes: int = 1440 * 7  # 7 days in minutes
+    retention_transfer_grouped_minutes: int = -1 # unlimited retention
     frontend_dist_dir: Optional[str] = "../client/dist"
     unprocessed_log_dir: str = "../data/"
     cors_allow_origins: List[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
