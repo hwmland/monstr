@@ -2,7 +2,7 @@ import type { FC } from "react";
 import { useEffect, useMemo, useState } from "react";
 import usePanelVisibilityStore from "../store/usePanelVisibility";
 import { fetchIntervalTransfers } from "../services/apiClient";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell, ReferenceLine } from "recharts";
 import { formatSizeValue, pickSizeUnit, pickRateUnit, formatRateValue } from "../utils/units";
 import Legend from "./Legend";
 import PanelSubtitle from "./PanelSubtitle";
@@ -28,11 +28,16 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
   if (!show) return null;
   const [mode, setMode] = useState<Mode>("size");
   const [range, setRange] = useState<Range>("1h");
+  const [layout, setLayout] = useState<'stacked' | 'grouped'>('stacked');
   const [data, setData] = useState<any[] | null>(null);
   const [startTime, setStartTime] = useState<string | null>(null);
   const [endTime, setEndTime] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hoverValue, setHoverValue] = useState<number | null>(null);
+  const [hoverLabel, setHoverLabel] = useState<string | null>(null);
+  const [hoverSeries, setHoverSeries] = useState<'dl' | 'ul' | null>(null);
+  const [chartWidth, setChartWidth] = useState<number | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -114,6 +119,83 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
     return { displayUnit: "ops", displayFactor: 1 };
   }, [chartData, mode]);
 
+  const formatHoverValue = (val: number) => {
+    if (!Number.isFinite(val)) return String(val);
+    if (mode === 'size') return `${formatSizeValue(Number(val) / (displayFactor || 1))} ${displayUnit}`;
+    if (mode === 'speed') return `${formatRateValue(Number(val) / (displayFactor || 1))} ${displayUnit}`;
+    return String(val);
+  };
+
+  const buildHoverFromPayload = (item: any) => {
+    if (!item) return { value: null, label: null };
+    const val = Number(item?.value ?? item?.payload?.value ?? item?.payload?.dl ?? item?.payload?.ul ?? 0);
+    const seriesName = item?.name ?? item?.dataKey ?? (item?.payload && (item.payload.seriesName ?? item.payload.name)) ?? '';
+    const formatted = formatHoverValue(val);
+    return { value: Number.isFinite(val) ? val : null, label: seriesName ? `${seriesName}: ${formatted}` : formatted };
+  };
+
+  const buildHoverFromStack = (index: number | null) => {
+    if (index == null || !chartData || !chartData[index]) return { value: null, label: null };
+    const row = chartData[index] as any;
+    const val = (Number(row.dl || 0) + Number(row.ul || 0));
+    const formatted = formatHoverValue(val);
+    return { value: Number.isFinite(val) ? val : null, label: `Total: ${formatted}` };
+  };
+
+  const computeHoverFromEvent = (e: any) => {
+    try {
+      if (layout === 'grouped' && e && Array.isArray(e.activePayload) && e.activePayload.length) {
+        const targetKey = hoverSeries ?? e.activePayload[0]?.dataKey ?? null;
+        const item = targetKey ? e.activePayload.find((entry: any) => entry?.dataKey === targetKey) ?? e.activePayload[0] : e.activePayload[0];
+        return buildHoverFromPayload(item);
+      }
+      if (typeof e?.activeTooltipIndex === 'number') {
+        return buildHoverFromStack(e.activeTooltipIndex);
+      }
+    } catch {
+      // fallthrough to null
+    }
+    return { value: null, label: null };
+  };
+
+  useEffect(() => {
+    if (layout !== 'grouped') {
+      setHoverSeries(null);
+    }
+  }, [layout]);
+
+  const bucketCount = chartData.length;
+
+  const groupedBarMetrics = useMemo(() => {
+    if (layout !== 'grouped' || !chartWidth || bucketCount === 0) {
+      return { barSize: 8, barGap: 6 };
+    }
+
+    const marginRight = 12; // mirrors chart margin.right
+    const effectiveWidth = Math.max(0, chartWidth - marginRight);
+    const categoryWidth = effectiveWidth / bucketCount;
+    const safeCategory = Number.isFinite(categoryWidth) ? categoryWidth : 0;
+    const rawBar = (safeCategory * 0.7) / 2;
+    const maxBar = Math.max(2, (safeCategory - 2) / 2);
+    let barWidth = Math.round(rawBar);
+    barWidth = Math.max(2, Math.min(40, barWidth));
+    barWidth = Math.min(barWidth, Math.floor(maxBar));
+    const gapRaw = safeCategory - barWidth * 2;
+    const barGap = Math.max(2, Math.min(32, Math.round(Number.isFinite(gapRaw) ? gapRaw : 6)));
+
+    return { barSize: barWidth, barGap };
+  }, [layout, chartWidth, bucketCount]);
+
+  const barSizingProps = layout === 'stacked'
+    ? { stackId: 'a' as const }
+    : { barSize: groupedBarMetrics.barSize, maxBarSize: groupedBarMetrics.barSize };
+
+  const highlightIndex = useMemo(() => {
+    if (range !== "30h" || !chartData || chartData.length < 25) return -1;
+    // 24th bar from the right
+    return chartData.length - 25;
+  }, [chartData, range]);
+
   return (
     <section className="panel">
       <header className="panel__header">
@@ -121,10 +203,16 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
           <h2 className="panel__title">Accumulated Traffic</h2>
                 <PanelSubtitle windowStart={startTime} windowEnd={endTime} selectedNodes={selectedNodes} />
         </div>
-        <div className="panel__actions panel__actions--stacked">
+          <div className="panel__actions panel__actions--stacked">
           <button className="button" type="button" onClick={load} disabled={loading}>{loading ? "Loading…" : "Refresh"}</button>
           <div className="panel-controls">
             <div className="panel-controls__left">
+              <div className="button-group button-group--micro">
+                <button type="button" className={`button button--micro${layout === 'stacked' ? ' button--micro-active' : ''}`} onClick={() => setLayout('stacked')}>Stack</button>
+                <button type="button" className={`button button--micro${layout === 'grouped' ? ' button--micro-active' : ''}`} onClick={() => setLayout('grouped')}>Grp</button>
+              </div>
+            </div>
+            <div className="panel-controls__center">
               <div className="button-group button-group--micro">
                 <button type="button" className={`button button--micro${mode === "size" ? " button--micro-active" : ""}`} onClick={() => setMode("size")}>Size</button>
                 <button type="button" className={`button button--micro${mode === "speed" ? " button--micro-active" : ""}`} onClick={() => setMode("speed")}>Speed</button>
@@ -150,8 +238,29 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
         ) : (
           <>
             <div style={{ width: '100%', height: 320 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+                onResize={(width: number) => {
+                  if (!Number.isFinite(width) || width <= 0) return;
+                  setChartWidth((prev) => (prev === width ? prev : width));
+                }}
+              >
+                <BarChart
+                  data={chartData}
+                  margin={{ top: 8, right: 12, left: 0, bottom: 4 }}
+                  barGap={groupedBarMetrics.barGap}
+                  onMouseMove={(e: any) => {
+                    const result = computeHoverFromEvent(e);
+                    setHoverValue(result.value);
+                    setHoverLabel(result.label);
+                  }}
+                  onMouseLeave={() => {
+                    setHoverSeries(null);
+                    setHoverValue(null);
+                    setHoverLabel(null);
+                  }}
+                >
                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                 <XAxis
                   dataKey="label"
@@ -191,8 +300,36 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
                     }
                   }}
                 />
-                <Bar dataKey="dl" stackId="a" fill="#10784A" name="Download" isAnimationActive={false} />
-                <Bar dataKey="ul" stackId="a" fill="#34D399" name="Upload" isAnimationActive={false} />
+                <Bar
+                  dataKey="dl"
+                  {...barSizingProps}
+                  fill="#10784A"
+                  name="Download"
+                  isAnimationActive={false}
+                  onMouseMove={() => setHoverSeries((prev) => (prev === 'dl' ? prev : 'dl'))}
+                  onMouseLeave={() => setHoverSeries((prev) => (prev === 'dl' ? null : prev))}
+                >
+                  {chartData.map((_: any, i: number) => (
+                    <Cell key={`dl-${i}`} stroke={i === highlightIndex ? '#ef4444' : undefined} strokeWidth={i === highlightIndex ? 2 : undefined} />
+                  ))}
+                </Bar>
+                <Bar
+                  dataKey="ul"
+                  {...barSizingProps}
+                  fill="#34D399"
+                  name="Upload"
+                  isAnimationActive={false}
+                  onMouseMove={() => setHoverSeries((prev) => (prev === 'ul' ? prev : 'ul'))}
+                  onMouseLeave={() => setHoverSeries((prev) => (prev === 'ul' ? null : prev))}
+                >
+                  {chartData.map((_: any, i: number) => (
+                    <Cell key={`ul-${i}`} stroke={i === highlightIndex ? '#ef4444' : undefined} strokeWidth={i === highlightIndex ? 2 : undefined} />
+                  ))}
+                </Bar>
+                {layout === 'grouped' ? <></> : null}
+                {hoverValue != null ? (
+                  <ReferenceLine y={hoverValue} stroke="#9ca3af" strokeWidth={1} ifOverflow="extendDomain" label={hoverLabel ? { value: hoverLabel, position: 'insideBottomLeft', fill: '#ffffff' } : undefined} />
+                ) : null}
                 </BarChart>
               </ResponsiveContainer>
             </div>

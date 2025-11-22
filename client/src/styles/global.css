@@ -169,6 +169,12 @@ a {
   gap: 0.4rem;
 }
 
+.panel-controls__center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 @media (max-width: 640px) {
   .panel-controls {
     flex-direction: column;
@@ -565,27 +571,36 @@ a {
   color: #0b1220;
   /* very dark label text */
   border-radius: 8px;
-  padding: 8px 10px;
+  /* even tighter padding to minimize vertical footprint */
+  padding: 2px 4px;
   border: 1px solid rgba(11, 18, 32, 0.06);
-  box-shadow: 0 8px 20px rgba(8, 15, 35, 0.45);
-  min-width: 120px;
+  box-shadow: 0 8px 10px rgba(8, 15, 35, 0.45);
+  min-width: 100px;
+  line-height: 1.05;
+  font-size: 14px;
 }
 
 .recharts-default-tooltip .label {
   color: #0b1220;
   font-weight: 700;
   font-size: 13px;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .recharts-default-tooltip table {
   color: #0b1220;
+  border-collapse: collapse;
+  line-height: 1.0;
+}
+.recharts-default-tooltip table td,
+.recharts-default-tooltip table th {
+  padding: 0px 3px;
 }
 
 /* Payout summary in panels (Pay · Held · Est) */
 .payout-summary {
   margin: 0.6rem 0;
-  font-size: 1.25rem; /* slightly larger than regular text */
+  font-size: 1.25rem; /* slightly larger than regular text */  
   font-weight: 600;
   color: var(--color-text);
   display: flex;
@@ -594,7 +609,6 @@ a {
   align-items: center;
   width: 100%;
 }
-
 @media (max-width: 640px) {
   .payout-summary {
     font-size: 0.95rem;
