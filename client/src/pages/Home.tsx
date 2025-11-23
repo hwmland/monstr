@@ -1,4 +1,5 @@
 import ActualPerformancePanel from "../components/ActualPerformancePanel";
+import LongTermPanel from "../components/LongTermPanel";
 import NodesPanel from "../components/NodesPanel";
 import ReputationsPanel from "../components/ReputationsPanel";
 import SatelliteTrafficPanel from "../components/SatelliteTrafficPanel";
@@ -15,6 +16,7 @@ const HomePage = () => {
   const showHourlyTraffic = isVisible("hourlyTraffic");
   const showDataSizeDistribution = isVisible("dataDistribution");
   const showAccumulatedTraffic = isVisible("accumulatedTraffic");
+  const showLongTerm = isVisible("longTerm");
   const shouldLoadTransfers = showSatelliteTraffic || showActualPerformance;
   const shouldRenderTransfers = showSatelliteTraffic || showActualPerformance || showHourlyTraffic;
 
@@ -25,6 +27,7 @@ const HomePage = () => {
   return (
     <div className="page">
       <NodesPanel />
+      {showLongTerm ? <LongTermPanel /> : null}
       {shouldRenderTransfers ? (
         <>
           <div className="transfer-panels">

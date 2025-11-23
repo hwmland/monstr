@@ -63,3 +63,32 @@ export interface PayoutNode {
   repairPayout?: number | null;
   diskPayout?: number | null;
 }
+
+export interface PaystubRecord {
+  source: string;
+  satelliteId: string;
+  period: string;
+  created: string;
+  usageAtRest: number;
+  usageGet: number;
+  usagePut: number;
+  usageGetRepair: number;
+  usagePutRepair: number;
+  usageGetAudit: number;
+  compAtRest: number;
+  compGet: number;
+  compPut: number;
+  compGetRepair: number;
+  compPutRepair: number;
+  compGetAudit: number;
+  surgePercent: number;
+  held: number;
+  owed: number;
+  disposed: number;
+  paid: number;
+  distributed: number;
+}
+
+export interface PaystubPeriodsResponse {
+  periods: Record<string, PaystubRecord[]>;
+}

@@ -85,6 +85,14 @@ const Settings: FC = () => {
                 <label className="settings__item">
                   <input
                     type="checkbox"
+                    checked={panels.longTerm ?? false}
+                    onChange={() => togglePanel("longTerm")}
+                  />
+                  <span>Long-Term View</span>
+                </label>
+                <label className="settings__item">
+                  <input
+                    type="checkbox"
                     checked={panels.satelliteTraffic ?? true}
                     onChange={() => togglePanel("satelliteTraffic")}
                   />

@@ -4,6 +4,8 @@ import { translateSatelliteId } from "../constants/satellites";
 import type {
   NodeInfo,
   NodeReputation,
+  PaystubPeriodsResponse,
+  PaystubRecord,
   SatelliteReputation,
   TransferActualCategoryMetrics,
   TransferActualData,
@@ -170,6 +172,69 @@ export const fetchDataDistribution = async (nodes: string[]) => {
 export const fetchPayoutCurrent = async (nodes: string[]) => {
   const response = await apiClient.post("/payout/current", { nodes });
   return response.data;
+};
+
+export const fetchPayoutPaystubs = async (nodes: string[]): Promise<PaystubPeriodsResponse> => {
+  const response = await apiClient.post("/payout/paystubs", { nodes });
+  const raw = response.data;
+
+  const ensureNumber = (value: unknown): number => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const sanitizeRecord = (item: Record<string, unknown>): PaystubRecord => ({
+    source: String(item.source ?? ""),
+    satelliteId: String(item.satelliteId ?? item.satellite_id ?? ""),
+    period: String(item.period ?? ""),
+    created: String(item.created ?? ""),
+    usageAtRest: ensureNumber(item.usageAtRest ?? item.usage_at_rest),
+    usageGet: ensureNumber(item.usageGet ?? item.usage_get),
+    usagePut: ensureNumber(item.usagePut ?? item.usage_put),
+    usageGetRepair: ensureNumber(item.usageGetRepair ?? item.usage_get_repair),
+    usagePutRepair: ensureNumber(item.usagePutRepair ?? item.usage_put_repair),
+    usageGetAudit: ensureNumber(item.usageGetAudit ?? item.usage_get_audit),
+    compAtRest: ensureNumber(item.compAtRest ?? item.comp_at_rest),
+    compGet: ensureNumber(item.compGet ?? item.comp_get),
+    compPut: ensureNumber(item.compPut ?? item.comp_put),
+    compGetRepair: ensureNumber(item.compGetRepair ?? item.comp_get_repair),
+    compPutRepair: ensureNumber(item.compPutRepair ?? item.comp_put_repair),
+    compGetAudit: ensureNumber(item.compGetAudit ?? item.comp_get_audit),
+    surgePercent: ensureNumber(item.surgePercent ?? item.surge_percent),
+    held: ensureNumber(item.held),
+    owed: ensureNumber(item.owed),
+    disposed: ensureNumber(item.disposed),
+    paid: ensureNumber(item.paid),
+    distributed: ensureNumber(item.distributed),
+  });
+
+  const periods: Record<string, PaystubRecord[]> = {};
+  const rawPeriods =
+    raw && typeof raw === "object" && raw !== null && "periods" in raw
+      ? ((raw as { periods?: unknown }).periods ?? {})
+      : {};
+
+  if (rawPeriods && typeof rawPeriods === "object") {
+    for (const [period, records] of Object.entries(rawPeriods as Record<string, unknown>)) {
+      if (!Array.isArray(records)) {
+        continue;
+      }
+
+      const normalized: PaystubRecord[] = [];
+      for (const entry of records) {
+        if (!entry || typeof entry !== "object") {
+          continue;
+        }
+        normalized.push(sanitizeRecord(entry as Record<string, unknown>));
+      }
+
+      if (normalized.length > 0) {
+        periods[period] = normalized;
+      }
+    }
+  }
+
+  return { periods };
 };
 
 export const fetchIntervalTransfers = async (nodes: string[], intervalLength: string, numberOfIntervals: number) => {

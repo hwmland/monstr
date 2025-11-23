@@ -28,6 +28,7 @@ const DEFAULT_PANELS: Record<string, boolean> = {
   dataDistribution: true,
   hourlyTransfers: true,
   accumulatedTraffic: true,
+  longTerm: false,
 };
 
 const usePanelVisibilityStore = create<PanelVisibilityState>((set, get) => ({

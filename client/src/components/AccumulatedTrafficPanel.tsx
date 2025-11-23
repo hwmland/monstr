@@ -22,6 +22,66 @@ interface AccumulatedTrafficPanelProps {
   selectedNodes: string[];
 }
 
+const formatTimestampLabel = (value: string, use24h: boolean) => {
+  try {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    const options = { hour: "2-digit", minute: "2-digit", hour12: !use24h } as const;
+    return date.toLocaleTimeString([], options);
+  } catch {
+    return value;
+  }
+};
+
+const AccumulatedTrafficTooltip: FC<{
+  active?: boolean;
+  payload?: unknown[];
+  label?: string;
+  mode: Mode;
+  displayUnit: string;
+  displayFactor: number;
+  use24h: boolean;
+}> = ({ active, payload, label, mode, displayUnit, displayFactor, use24h }) => {
+  if (!active || !payload || payload.length === 0) {
+    return null;
+  }
+
+  const entries = payload as Array<{ name?: string; value?: number; color?: string; dataKey?: string }>;
+
+  const formatValue = (value: number) => {
+    if (!Number.isFinite(value)) {
+      return "0";
+    }
+    if (mode === "size") {
+      return `${formatSizeValue(value / (displayFactor || 1))} ${displayUnit}`;
+    }
+    if (mode === "speed") {
+      return `${formatRateValue(value / (displayFactor || 1))} ${displayUnit}`;
+    }
+    return `${Math.round(value)} ops`;
+  };
+
+  return (
+    <div className="chart-tooltip">
+      <div className="chart-tooltip__label">
+        {label ? `At ${formatTimestampLabel(label, use24h)}` : "Bucket"}
+      </div>
+      {entries.map((entry) => {
+        const key = entry.dataKey ?? entry.name ?? "Series";
+        const numeric = Number(entry.value ?? 0);
+        return (
+          <div key={String(key)} className="chart-tooltip__row">
+            <span style={{ color: entry.color ?? "var(--color-text)" }}>{String(key)}:</span>
+            <span>{formatValue(numeric)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNodes }) => {
   const { isVisible } = usePanelVisibilityStore();
   const show = isVisible("accumulatedTraffic");
@@ -285,20 +345,15 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
                   return String(v);
                 }} label={{ value: mode === 'size' ? displayUnit : (mode === 'speed' ? displayUnit : 'ops'), angle: -90, position: 'insideLeft', fill: 'var(--color-text-muted)' }} />
                 <Tooltip
-                  formatter={(v: number | string) => {
-                    if (mode === 'size') return `${formatSizeValue(Number(v) / (displayFactor || 1))} ${displayUnit}`;
-                    if (mode === 'speed') return `${formatRateValue(Number(v) / (displayFactor || 1))} ${displayUnit}`;
-                    return String(v);
-                  }}
-                  labelFormatter={(label: any) => {
-                    try {
-                      const d = new Date(String(label));
-                      const hour12 = system24 ? false : true;
-                      return "At: " + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12 } as any);
-                    } catch {
-                      return String(label);
-                    }
-                  }}
+                  content={(
+                    <AccumulatedTrafficTooltip
+                      mode={mode}
+                      displayUnit={displayUnit}
+                      displayFactor={displayFactor}
+                      use24h={system24}
+                    />
+                  )}
+                  cursor={{ fill: "rgba(148, 163, 184, 0.05)" }}
                 />
                 <Bar
                   dataKey="dl"

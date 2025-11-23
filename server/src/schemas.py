@@ -351,6 +351,16 @@ class PayoutCurrentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
+class PayoutPaystubsRequest(BaseModel):
+    nodes: list[str] = Field(default_factory=list, description="Nodes to include; empty means all nodes")
+
+
+class PayoutPaystubsResponse(BaseModel):
+    periods: dict[str, list[PaystubRead]] = Field(default_factory=dict)
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
 class TransferWindowMetrics(BaseModel):
     download_size: int = Field(default=0, serialization_alias="downloadSize")
     upload_size: int = Field(default=0, serialization_alias="uploadSize")

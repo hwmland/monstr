@@ -1,5 +1,5 @@
 export type RateUnit = "bps" | "Kbps" | "Mbps";
-export type SizeUnit = "B" | "KB" | "MB" | "GB";
+export type SizeUnit = "B" | "KB" | "MB" | "GB" | "TB";
 
 type UnitDefinition<T extends string> = {
   unit: T;
@@ -17,6 +17,7 @@ const SIZE_UNITS: ReadonlyArray<UnitDefinition<SizeUnit>> = [
   { unit: "KB", factor: 1024 },
   { unit: "MB", factor: 1024 ** 2 },
   { unit: "GB", factor: 1024 ** 3 },
+  { unit: "TB", factor: 1024 ** 4 },
 ];
 
 const normalizePositive = (value: number): number => {
