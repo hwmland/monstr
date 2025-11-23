@@ -146,6 +146,64 @@ class TransferGrouped(SQLModel, table=True):
     count_ul_fail_rep: int = Field(default=0, description="Failed repair upload count")
 
 
+class Paystub(SQLModel, table=True):
+    """Monthly paystub snapshot sourced from Storj node metrics."""
+
+    source: str = Field(
+        sa_column=Column(String(32), primary_key=True, nullable=False),
+        description="Configured node name for the log source",
+    )
+    satellite_id: str = Field(
+        sa_column=Column(String(64), primary_key=True, nullable=False),
+        description="Satellite identifier",
+    )
+    period: str = Field(
+        sa_column=Column(String(32), primary_key=True, nullable=False, index=True),
+        description="Pay period identifier (e.g. 2025-10)",
+    )
+    created: datetime = Field(
+        sa_column=Column(DateTime(timezone=True), nullable=False, index=True),
+        description="Timestamp when the paystub snapshot was recorded",
+    )
+    usage_at_rest: float = Field(
+        sa_column=Column(Float, nullable=False),
+        description="TB-hours used at rest",
+    )
+    usage_get: float = Field(sa_column=Column(Float, nullable=False), description="Egress usage")
+    usage_put: float = Field(sa_column=Column(Float, nullable=False), description="Ingress usage")
+    usage_get_repair: float = Field(
+        sa_column=Column(Float, nullable=False), description="Repair egress usage"
+    )
+    usage_put_repair: float = Field(
+        sa_column=Column(Float, nullable=False), description="Repair ingress usage"
+    )
+    usage_get_audit: float = Field(
+        sa_column=Column(Float, nullable=False), description="Audit egress usage"
+    )
+    comp_at_rest: float = Field(sa_column=Column(Float, nullable=False), description="At rest compensation")
+    comp_get: float = Field(sa_column=Column(Float, nullable=False), description="Download compensation")
+    comp_put: float = Field(sa_column=Column(Float, nullable=False), description="Upload compensation")
+    comp_get_repair: float = Field(
+        sa_column=Column(Float, nullable=False), description="Repair download compensation"
+    )
+    comp_put_repair: float = Field(
+        sa_column=Column(Float, nullable=False), description="Repair upload compensation"
+    )
+    comp_get_audit: float = Field(
+        sa_column=Column(Float, nullable=False), description="Audit download compensation"
+    )
+    surge_percent: float = Field(
+        sa_column=Column(Float, nullable=False), description="Applied surge percentage"
+    )
+    held: float = Field(sa_column=Column(Float, nullable=False), description="Held amount")
+    owed: float = Field(sa_column=Column(Float, nullable=False), description="Owed amount")
+    disposed: float = Field(sa_column=Column(Float, nullable=False), description="Disposed amount")
+    paid: float = Field(sa_column=Column(Float, nullable=False), description="Paid amount")
+    distributed: float = Field(
+        sa_column=Column(Float, nullable=False), description="Distributed (payout) amount"
+    )
+
+
 class HeldAmount(SQLModel, table=True):
     """Per-node held payout amounts recorded from nodeapi or other sources."""
 

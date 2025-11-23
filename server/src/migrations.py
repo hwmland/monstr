@@ -150,9 +150,16 @@ def _migrate_2_to_3(conn: Connection) -> None:
     logger.info("Completed migration 2 -> 3")
 
 
+def _migrate_3_to_4(conn: Connection) -> None:
+    """Create Paystub table for monthly payout snapshots."""
+    logger.info("Starting migration 3 -> 4: create Paystub table")
+    models.Paystub.__table__.create(conn, checkfirst=True)
+    logger.info("Completed migration 3 -> 4")
+
+
 MigrationFunc = type(_migrate_0_to_1)
 
-MIGRATIONS = (_migrate_0_to_1, _migrate_1_to_2, _migrate_2_to_3)
+MIGRATIONS = (_migrate_0_to_1, _migrate_1_to_2, _migrate_2_to_3, _migrate_3_to_4)
 LATEST_SCHEMA_VERSION = len(MIGRATIONS)
 
 

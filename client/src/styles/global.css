@@ -158,21 +158,11 @@ a {
   align-items: center;
   width: 100%; /* ensure controls span available width so margin-left:auto can push the right group */
 }
-.panel-controls__left {
-  display: flex;
-  align-items: center;
-}
+
 .panel-controls__right {
   display: flex;
   margin-left: auto; /* push right group to the far edge */
   align-items: center;
-  gap: 0.4rem;
-}
-
-.panel-controls__center {
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 @media (max-width: 640px) {
@@ -215,9 +205,6 @@ a {
 .panel__header > div:first-child {
   min-width: 0; /* allow the left header column to shrink */
   flex: 1 1 auto;
-}
-.panel__actions {
-  flex: 0 0 auto; /* keep actions sized to content */
 }
 .panel__subtitle {
   overflow: hidden;
@@ -459,6 +446,83 @@ a {
   border-bottom: 2px solid rgba(148, 163, 184, 0.4);
 }
 
+.longterm-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.longterm-summary__item {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 12px;
+  padding: 0.55rem 0.85rem;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.longterm-summary__controls {
+  margin-left: auto;
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.longterm-summary__item--controls {
+  gap: 0.4rem;
+  min-width: 160px;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.longterm-summary__item--controls .button-group {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.longterm-summary__label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+}
+
+.longterm-summary__value {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.longterm-chart {
+  width: 100%;
+  height: 320px;
+}
+
+.chart-tooltip {
+  background: rgba(30, 46, 84, 0.80);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  color: var(--color-text);
+  font-size: 0.85rem;
+  box-shadow: 0 8px 20px rgba(8, 15, 35, 0.45);
+}
+
+.chart-tooltip__label {
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+  font-size: 0.95rem;
+}
+
+.chart-tooltip__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
 /* Column width helpers for hourly table */
 .hourly-grid .table th.col-time,
 .hourly-grid .table td.col-time {
@@ -558,43 +622,6 @@ a {
   .app-main {
     padding: 1.5rem 1rem;
   }
-}
-/* Recharts tooltip styling: make tooltip background readable and labels high-contrast */
-.recharts-tooltip-wrapper {
-  z-index: 2500;
-  /* ensure tooltip appears above overlays */
-}
-
-.recharts-default-tooltip {
-  background: rgba(248, 250, 252, 0.507);
-  /* very light background for readable text */
-  color: #0b1220;
-  /* very dark label text */
-  border-radius: 8px;
-  /* even tighter padding to minimize vertical footprint */
-  padding: 2px 4px;
-  border: 1px solid rgba(11, 18, 32, 0.06);
-  box-shadow: 0 8px 10px rgba(8, 15, 35, 0.45);
-  min-width: 100px;
-  line-height: 1.05;
-  font-size: 14px;
-}
-
-.recharts-default-tooltip .label {
-  color: #0b1220;
-  font-weight: 700;
-  font-size: 13px;
-  margin-bottom: 4px;
-}
-
-.recharts-default-tooltip table {
-  color: #0b1220;
-  border-collapse: collapse;
-  line-height: 1.0;
-}
-.recharts-default-tooltip table td,
-.recharts-default-tooltip table th {
-  padding: 0px 3px;
 }
 
 /* Payout summary in panels (Pay · Held · Est) */

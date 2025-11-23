@@ -1,6 +1,6 @@
 import type { FC } from "react";
 import { useEffect, useMemo, useState } from "react";
-import usePanelVisibilityStore from "../store/usePanelVisibility";
+import usePanelVisibilityStore from "../../store/usePanelVisibility";
 import {
   Bar,
   BarChart,
@@ -11,11 +11,14 @@ import {
   YAxis,
 } from "recharts";
 
-import { fetchDataDistribution } from "../services/apiClient";
-import Legend from "./Legend";
-import { formatSizeValue, pickSizeUnit } from "../utils/units";
+import { fetchDataDistribution } from "../../services/apiClient";
+import Legend from "../Legend";
+import { formatSizeValue, pickSizeUnit } from "../../utils/units";
 // PanelSubtitle will format timestamps according to user preference
-import PanelSubtitle from "./PanelSubtitle";
+import PanelSubtitle from "../PanelSubtitle";
+import PanelHeader from "../PanelHeader";
+import PanelControls from "../PanelControls";
+import PanelControlsButton from "../PanelControlsButton";
 
 type Mode = "size" | "count" | "sizePercent" | "countPercent";
 
@@ -24,6 +27,68 @@ interface DataSizeDistributionPanelProps {
 }
 
 const CHART_HEIGHT = 270;
+
+const resolveLegendLabel = (value: string) => {
+  const key = String(value || "");
+  const isFail = /fail/i.test(key);
+  const isRepair = /repair/i.test(key);
+  const isNormal = /normal/i.test(key);
+
+  if (isFail && isRepair) return "Fail - Repair";
+  if (isFail && isNormal) return "Fail - Normal";
+  if (isRepair) return "Repair";
+  if (isNormal) return "Normal";
+
+  return key
+    .replace(/(download|upload)/gi, "")
+    .replace(/(Size|Success|Fail|Nor|Rep)/gi, (match) => (match.toLowerCase() === "nor" ? "normal" : match))
+    .replace(/([A-Z])/g, " $1")
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
+const DataDistributionTooltip: FC<{
+  active?: boolean;
+  payload?: unknown[];
+  label?: string;
+  mode: Mode;
+  sizeUnit: string;
+  sizeUnitFactor: number;
+}> = ({ active, payload, label, mode, sizeUnit, sizeUnitFactor }) => {
+  if (!active || !payload || payload.length === 0) {
+    return null;
+  }
+
+  const entries = payload as Array<{ name?: string; value?: number; color?: string; dataKey?: string }>;
+
+  return (
+    <div className="chart-tooltip">
+      <div className="chart-tooltip__label">{label ? `Size Class: ${label}` : "Size Class"}</div>
+      {entries.map((entry) => {
+        const key = entry.dataKey ?? entry.name ?? "entry";
+        const displayName = resolveLegendLabel(String(key));
+        const numericValue = Number(entry.value ?? 0);
+
+        let formattedValue: string;
+        if (mode === "size") {
+          const scaled = numericValue / (sizeUnitFactor || 1);
+          formattedValue = `${formatSizeValue(scaled)} ${sizeUnit}`;
+        } else if (mode === "count") {
+          formattedValue = `${numericValue.toFixed(0)} ops`;
+        } else {
+          formattedValue = `${numericValue.toFixed(2)} %`;
+        }
+
+        return (
+          <div key={String(key)} className="chart-tooltip__row">
+            <span style={{ color: entry.color ?? "var(--color-text)" }}>{displayName}:</span>
+            <span>{formattedValue}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
 
 const DataSizeDistributionPanel: FC<DataSizeDistributionPanelProps> = ({ selectedNodes }) => {
   const { isVisible } = usePanelVisibilityStore();
@@ -191,61 +256,25 @@ const DataSizeDistributionPanel: FC<DataSizeDistributionPanelProps> = ({ selecte
   const chartDownload = isPercentMode ? downloadDataPct : downloadData;
   const chartUpload = isPercentMode ? uploadDataPct : uploadData;
 
-  const renderTooltipPercent = (value: any, name?: string) => {
-    const numeric = Number(value) || 0;
-    const formattedValue = `${numeric.toFixed(2)} %`;
-    const formattedName = legendFormatter(String(name ?? ""));
-    return [formattedValue, formattedName];
-  };
-
-  const renderTooltipSize = (value: any, factor: number, unit: string, name?: string) => {
-    const numeric = Number(value) || 0;
-    const scaled = numeric / (factor || 1);
-    const formattedValue = `${formatSizeValue(scaled)} ${unit}`;
-    const formattedName = legendFormatter(String(name ?? ""));
-    return [formattedValue, formattedName];
-  };
-
-  const renderTooltipCount = (value: any, name?: string) => {
-    const formattedValue = `${Number(value).toFixed(0)} ops`;
-    const formattedName = legendFormatter(String(name ?? ""));
-    return [formattedValue, formattedName];
-  };
-
-  const legendFormatter = (value: string) => {
-    // Normalize keys such as downloadNormalSize, uploadRepairFail, downloadNormalFailSize, downloadNormalSuccess, etc.
-    const key = String(value || "");
-    const isFail = /fail/i.test(key);
-    const isRepair = /repair/i.test(key);
-    const isNormal = /normal/i.test(key);
-
-    if (isFail && isRepair) return "Fail - Repair";
-    if (isFail && isNormal) return "Fail - Normal";
-    if (isRepair) return "Repair";
-    if (isNormal) return "Normal";
-    // Fallback: return a cleaned version
-    return key.replace(/(download|upload)/i, "").replace(/(Size|Success|Fail|Nor|Rep)/gi, match => {
-      return match.toLowerCase() === 'nor' ? 'normal' : match;
-    }).replace(/([A-Z])/g, ' $1').trim();
-  };
-
   return (
     <section className="panel">
-      <header className="panel__header">
-        <div>
-          <h2 className="panel__title">Data Size Distribution</h2>
-          <PanelSubtitle windowStart={data?.startTime} windowEnd={data?.endTime} selectedNodes={selectedNodes} />
-        </div>
-        <div className="panel__actions panel__actions--stacked">
-          <button className="button" type="button" onClick={load} disabled={loading}>{loading ? "Loading…" : "Refresh"}</button>
-          <div className="button-group button-group--micro">
-            <button type="button" className={`button button--micro${mode === "size" ? " button--micro-active" : ""}`} onClick={() => setMode("size")}>Size</button>
-            <button type="button" className={`button button--micro${mode === "count" ? " button--micro-active" : ""}`} onClick={() => setMode("count")}>Count</button>
-            <button type="button" className={`button button--micro${mode === "sizePercent" ? " button--micro-active" : ""}`} onClick={() => setMode("sizePercent")}>Size %</button>
-            <button type="button" className={`button button--micro${mode === "countPercent" ? " button--micro-active" : ""}`} onClick={() => setMode("countPercent")}>Count %</button>
-          </div>
-        </div>
-      </header>
+      <PanelHeader
+        title="Data Size Distribution"
+        subtitle={<PanelSubtitle windowStart={data?.startTime} windowEnd={data?.endTime} selectedNodes={selectedNodes} />}
+        onRefresh={load}
+        isRefreshing={loading}
+        controls={(
+          <PanelControls
+            ariaLabel="Display mode"
+            buttons={[
+              <PanelControlsButton key="size" active={mode === "size"} onClick={() => setMode("size")} content="Size" />,
+              <PanelControlsButton key="count" active={mode === "count"} onClick={() => setMode("count")} content="Count" />,
+              <PanelControlsButton key="size-percent" active={mode === "sizePercent"} onClick={() => setMode("sizePercent")} content="Size %" />,
+              <PanelControlsButton key="count-percent" active={mode === "countPercent"} onClick={() => setMode("countPercent")} content="Count %" />,
+            ]}
+          />
+        )}
+      />
 
       <div className="panel__body">
         {error ? <p className="panel__error">{error}</p> : null}
@@ -267,11 +296,16 @@ const DataSizeDistributionPanel: FC<DataSizeDistributionPanelProps> = ({ selecte
                   }}
                   label={{ value: mode === 'size' ? sizeUnitDl : (mode === 'sizePercent' || mode === 'countPercent' ? '%' : 'ops'), angle: -90, position: 'insideLeft', fill: 'var(--color-text-muted)' }}
                 />
-                <Tooltip formatter={(v: any, name: string) => {
-                  if (mode === 'size') return renderTooltipSize(v, sizeUnitDlFactor, sizeUnitDl, name);
-                  if (mode === 'sizePercent' || mode === 'countPercent') return renderTooltipPercent(v, name);
-                  return renderTooltipCount(v, name);
-                }} cursor={{ fill: "rgba(148, 163, 184, 0.05)" }} />
+                <Tooltip
+                  cursor={{ fill: "rgba(148, 163, 184, 0.05)" }}
+                  content={(
+                    <DataDistributionTooltip
+                      mode={mode}
+                      sizeUnit={sizeUnitDl}
+                      sizeUnitFactor={sizeUnitDlFactor}
+                    />
+                  )}
+                />
                 
                 <Bar dataKey={mode === "size" ? "downloadNormalSize" : mode === "count" ? "downloadNormalSuccess" : mode === "sizePercent" ? "downloadNormalSizePct" : "downloadNormalSuccessPct"} stackId="dl" fill="#10784A" isAnimationActive={false} />
                 <Bar dataKey={mode === "size" ? "downloadRepairSize" : mode === "count" ? "downloadRepairSuccess" : mode === "sizePercent" ? "downloadRepairSizePct" : "downloadRepairSuccessPct"} stackId="dl" fill="#34D399" isAnimationActive={false} />
@@ -297,11 +331,16 @@ const DataSizeDistributionPanel: FC<DataSizeDistributionPanelProps> = ({ selecte
                   }}
                   label={{ value: mode === 'size' ? sizeUnitUl : (mode === 'sizePercent' || mode === 'countPercent' ? '%' : 'ops'), angle: -90, position: 'insideLeft', fill: 'var(--color-text-muted)' }}
                 />
-                <Tooltip formatter={(v: any, name: string) => {
-                  if (mode === 'size') return renderTooltipSize(v, sizeUnitUlFactor, sizeUnitUl, name);
-                  if (mode === 'sizePercent' || mode === 'countPercent') return renderTooltipPercent(v, name);
-                  return renderTooltipCount(v, name);
-                }} cursor={{ fill: "rgba(148, 163, 184, 0.05)" }} />
+                <Tooltip
+                  cursor={{ fill: "rgba(148, 163, 184, 0.05)" }}
+                  content={(
+                    <DataDistributionTooltip
+                      mode={mode}
+                      sizeUnit={sizeUnitUl}
+                      sizeUnitFactor={sizeUnitUlFactor}
+                    />
+                  )}
+                />
                 
                 <Bar dataKey={mode === "size" ? "uploadNormalSize" : mode === "count" ? "uploadNormalSuccess" : mode === "sizePercent" ? "uploadNormalSizePct" : "uploadNormalSuccessPct"} stackId="ul" fill="#10784A" isAnimationActive={false} />
                 <Bar dataKey={mode === "size" ? "uploadRepairSize" : mode === "count" ? "uploadRepairSuccess" : mode === "sizePercent" ? "uploadRepairSizePct" : "uploadRepairSuccessPct"} stackId="ul" fill="#34D399" isAnimationActive={false} />

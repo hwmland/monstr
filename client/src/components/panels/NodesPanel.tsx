@@ -1,9 +1,9 @@
 import type { FC } from "react";
 
-import Settings from "./Settings";
+import Settings from "../Settings";
 
-import useNodes from "../hooks/useNodes";
-import useSelectedNodesStore from "../store/useSelectedNodes";
+import useNodes from "../../hooks/useNodes";
+import useSelectedNodesStore from "../../store/useSelectedNodes";
 
 const NodesPanel: FC = () => {
   const { nodes, isLoading, error, refresh } = useNodes();

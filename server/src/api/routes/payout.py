@@ -1,10 +1,20 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Request
+from sqlalchemy import select
 
 from ...config import Settings
-from ...services.node_api import NodeApiService, NodeState, NodeData
-from ...schemas import PayoutCurrentRequest, PayoutCurrentResponse, PayoutNode
+from ... import database
+from ...models import Paystub
+from ...services.node_api import NodeApiService
+from ...schemas import (
+    PayoutCurrentRequest,
+    PayoutCurrentResponse,
+    PayoutNode,
+    PayoutPaystubsRequest,
+    PayoutPaystubsResponse,
+    PaystubRead,
+)
 
 router = APIRouter(prefix="/api/payout", tags=["payout"])
 
@@ -55,3 +65,23 @@ async def current_payouts(req: PayoutCurrentRequest, request: Request) -> Payout
     return PayoutCurrentResponse(nodes=out)
 
 # Endpoint removed by request — helpers and router left in place for future use.
+
+
+@router.post("/paystubs", response_model=PayoutPaystubsResponse)
+async def paystub_history(req: PayoutPaystubsRequest) -> PayoutPaystubsResponse:
+    stmt = select(Paystub)
+    if req.nodes:
+        stmt = stmt.where(Paystub.source.in_(req.nodes))
+    stmt = stmt.order_by(Paystub.period, Paystub.source, Paystub.satellite_id, Paystub.created)
+
+    periods: dict[str, list[PaystubRead]] = {}
+
+    async with database.SessionFactory() as session:
+        result = await session.execute(stmt)
+        records = result.scalars().all()
+
+    for record in records:
+        bucket = periods.setdefault(record.period, [])
+        bucket.append(PaystubRead.model_validate(record))
+
+    return PayoutPaystubsResponse(periods=periods)
