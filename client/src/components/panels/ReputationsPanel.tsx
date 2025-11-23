@@ -1,8 +1,8 @@
 import type { FC } from "react";
 
-import { COLOR_STATUS_GREEN, COLOR_STATUS_RED, COLOR_STATUS_YELLOW } from "../constants/colors";
-import useReputationsPanel from "../hooks/useReputationsPanel";
-import type { SatelliteReputation } from "../types";
+import { COLOR_STATUS_GREEN, COLOR_STATUS_RED, COLOR_STATUS_YELLOW } from "../../constants/colors";
+import useReputationsPanel from "../../hooks/useReputationsPanel";
+import type { SatelliteReputation } from "../../types";
 
 const formatScore = (value: number) => `${(value * 100).toFixed(2)}%`;
 

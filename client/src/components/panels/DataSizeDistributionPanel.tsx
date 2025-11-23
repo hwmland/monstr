@@ -1,6 +1,6 @@
 import type { FC } from "react";
 import { useEffect, useMemo, useState } from "react";
-import usePanelVisibilityStore from "../store/usePanelVisibility";
+import usePanelVisibilityStore from "../../store/usePanelVisibility";
 import {
   Bar,
   BarChart,
@@ -11,11 +11,14 @@ import {
   YAxis,
 } from "recharts";
 
-import { fetchDataDistribution } from "../services/apiClient";
-import Legend from "./Legend";
-import { formatSizeValue, pickSizeUnit } from "../utils/units";
+import { fetchDataDistribution } from "../../services/apiClient";
+import Legend from "../Legend";
+import { formatSizeValue, pickSizeUnit } from "../../utils/units";
 // PanelSubtitle will format timestamps according to user preference
-import PanelSubtitle from "./PanelSubtitle";
+import PanelSubtitle from "../PanelSubtitle";
+import PanelHeader from "../PanelHeader";
+import PanelControls from "../PanelControls";
+import PanelControlsButton from "../PanelControlsButton";
 
 type Mode = "size" | "count" | "sizePercent" | "countPercent";
 
@@ -255,21 +258,23 @@ const DataSizeDistributionPanel: FC<DataSizeDistributionPanelProps> = ({ selecte
 
   return (
     <section className="panel">
-      <header className="panel__header">
-        <div>
-          <h2 className="panel__title">Data Size Distribution</h2>
-          <PanelSubtitle windowStart={data?.startTime} windowEnd={data?.endTime} selectedNodes={selectedNodes} />
-        </div>
-        <div className="panel__actions panel__actions--stacked">
-          <button className="button" type="button" onClick={load} disabled={loading}>{loading ? "Loading…" : "Refresh"}</button>
-          <div className="button-group button-group--micro">
-            <button type="button" className={`button button--micro${mode === "size" ? " button--micro-active" : ""}`} onClick={() => setMode("size")}>Size</button>
-            <button type="button" className={`button button--micro${mode === "count" ? " button--micro-active" : ""}`} onClick={() => setMode("count")}>Count</button>
-            <button type="button" className={`button button--micro${mode === "sizePercent" ? " button--micro-active" : ""}`} onClick={() => setMode("sizePercent")}>Size %</button>
-            <button type="button" className={`button button--micro${mode === "countPercent" ? " button--micro-active" : ""}`} onClick={() => setMode("countPercent")}>Count %</button>
-          </div>
-        </div>
-      </header>
+      <PanelHeader
+        title="Data Size Distribution"
+        subtitle={<PanelSubtitle windowStart={data?.startTime} windowEnd={data?.endTime} selectedNodes={selectedNodes} />}
+        onRefresh={load}
+        isRefreshing={loading}
+        controls={(
+          <PanelControls
+            ariaLabel="Display mode"
+            buttons={[
+              <PanelControlsButton key="size" active={mode === "size"} onClick={() => setMode("size")} content="Size" />,
+              <PanelControlsButton key="count" active={mode === "count"} onClick={() => setMode("count")} content="Count" />,
+              <PanelControlsButton key="size-percent" active={mode === "sizePercent"} onClick={() => setMode("sizePercent")} content="Size %" />,
+              <PanelControlsButton key="count-percent" active={mode === "countPercent"} onClick={() => setMode("countPercent")} content="Count %" />,
+            ]}
+          />
+        )}
+      />
 
       <div className="panel__body">
         {error ? <p className="panel__error">{error}</p> : null}

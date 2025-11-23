@@ -158,21 +158,11 @@ a {
   align-items: center;
   width: 100%; /* ensure controls span available width so margin-left:auto can push the right group */
 }
-.panel-controls__left {
-  display: flex;
-  align-items: center;
-}
+
 .panel-controls__right {
   display: flex;
   margin-left: auto; /* push right group to the far edge */
   align-items: center;
-  gap: 0.4rem;
-}
-
-.panel-controls__center {
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 @media (max-width: 640px) {
@@ -215,9 +205,6 @@ a {
 .panel__header > div:first-child {
   min-width: 0; /* allow the left header column to shrink */
   flex: 1 1 auto;
-}
-.panel__actions {
-  flex: 0 0 auto; /* keep actions sized to content */
 }
 .panel__subtitle {
   overflow: hidden;

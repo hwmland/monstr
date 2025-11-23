@@ -2,12 +2,16 @@ import { FC, useCallback, useEffect, useMemo, useState } from "react";
 
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
-import { fetchPayoutPaystubs } from "../services/apiClient";
-import useSelectedNodesStore from "../store/useSelectedNodes";
-import type { PaystubRecord } from "../types";
-import PanelSubtitle from "./PanelSubtitle";
-import { formatSizeValue, pickSizeUnit } from "../utils/units";
-import type { SizeUnit } from "../utils/units";
+import { fetchPayoutPaystubs } from "../../services/apiClient";
+import useSelectedNodesStore from "../../store/useSelectedNodes";
+import type { PaystubRecord } from "../../types";
+import PanelSubtitle from "../PanelSubtitle";
+import PanelHeader from "../PanelHeader";
+import PanelControls from "../PanelControls";
+import PanelControlsButton from "../PanelControlsButton";
+import { translateSatelliteId } from "../../constants/satellites";
+import { formatSizeValue, pickSizeUnit } from "../../utils/units";
+import type { SizeUnit } from "../../utils/units";
 
 type Mode = "financial" | "data";
 type FinancialView = "monthly" | "accumulate";
@@ -145,12 +149,13 @@ const LongTermPanel: FC = () => {
   const selectedNodes = useSelectedNodesStore((state) => state.selected);
   const [mode, setMode] = useState<Mode>("financial");
   const [financialView, setFinancialView] = useState<FinancialView>("monthly");
-  const [financialGrouping, setFinancialGrouping] = useState<FinancialGrouping>("kind");
+  const [financialGrouping, setFinancialGrouping] = useState<FinancialGrouping>("total");
   const [dataSeriesMode, setDataSeriesMode] = useState<DataSeriesMode>("details");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [periods, setPeriods] = useState<Record<string, PaystubRecord[]>>({});
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [selectedSatelliteId, setSelectedSatelliteId] = useState<string>("All");
 
   const requestNodes = useMemo(() => {
     if (selectedNodes.length === 0 || selectedNodes.includes("All")) {
@@ -158,6 +163,40 @@ const LongTermPanel: FC = () => {
     }
     return [...selectedNodes.filter((name) => name !== "All")].sort();
   }, [selectedNodes]);
+
+  const satelliteOptions = useMemo(() => {
+    const ids = new Set<string>();
+    Object.values(periods).forEach((records) => {
+      records.forEach((record) => {
+        if (record.satelliteId) {
+          ids.add(record.satelliteId);
+        }
+      });
+    });
+    return Array.from(ids).sort((a, b) => translateSatelliteId(a).localeCompare(translateSatelliteId(b)));
+  }, [periods]);
+
+  useEffect(() => {
+    if (selectedSatelliteId !== "All" && !satelliteOptions.includes(selectedSatelliteId)) {
+      setSelectedSatelliteId("All");
+    }
+  }, [selectedSatelliteId, satelliteOptions]);
+
+  const satelliteButtonIds = useMemo(() => ["All", ...satelliteOptions], [satelliteOptions]);
+
+  const filteredPeriods = useMemo(() => {
+    if (selectedSatelliteId === "All") {
+      return periods;
+    }
+    const scoped: Record<string, PaystubRecord[]> = {};
+    Object.entries(periods).forEach(([period, records]) => {
+      const scopedRecords = records.filter((record) => record.satelliteId === selectedSatelliteId);
+      if (scopedRecords.length > 0) {
+        scoped[period] = scopedRecords;
+      }
+    });
+    return scoped;
+  }, [periods, selectedSatelliteId]);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
@@ -180,7 +219,7 @@ const LongTermPanel: FC = () => {
   }, [refresh]);
 
   const chartData: ChartPoint[] = useMemo(() => {
-    return Object.entries(periods)
+    return Object.entries(filteredPeriods)
       .map(([period, records]) => {
         const totals = records.reduce(
           (acc, record) => {
@@ -198,7 +237,7 @@ const LongTermPanel: FC = () => {
         return { period, ...totals, downloadTotal, total: totals.disk + downloadTotal } satisfies ChartPoint;
       })
       .sort((a, b) => a.period.localeCompare(b.period));
-  }, [periods]);
+  }, [filteredPeriods]);
 
   const financialChartData = useMemo(() => {
     if (financialView === "monthly") {
@@ -257,7 +296,7 @@ const LongTermPanel: FC = () => {
   );
 
   const rawUsage = useMemo<RawUsagePoint[]>(() => {
-    return Object.entries(periods)
+    return Object.entries(filteredPeriods)
       .map(([period, records]) => {
         const totals = records.reduce(
           (acc, record) => {
@@ -287,7 +326,7 @@ const LongTermPanel: FC = () => {
         } satisfies RawUsagePoint;
       })
       .sort((a, b) => a.period.localeCompare(b.period));
-  }, [periods]);
+  }, [filteredPeriods]);
 
   const diskUnitInfo = useMemo(() => {
     const maxDisk = rawUsage.reduce((acc, item) => Math.max(acc, item.diskUsageBytes), 0);
@@ -377,6 +416,10 @@ const LongTermPanel: FC = () => {
           { label: "Total Repair", value: aggregateTotals.repair },
         ];
 
+    const grandTotal = financialGrouping === "total"
+      ? aggregateTotals.owed + aggregateTotals.held
+      : aggregateTotals.disk + aggregateTotals.download + aggregateTotals.repair;
+
     return (
       <>
         <div className="longterm-summary">
@@ -386,27 +429,23 @@ const LongTermPanel: FC = () => {
               <span className="longterm-summary__value">{formatAmount(row.value)}</span>
             </div>
           ))}
+          <div key="grand-total" className="longterm-summary__item longterm-summary__item--grand">
+            <span className="longterm-summary__label">Grand Total</span>
+            <span className="longterm-summary__value">{formatAmount(grandTotal)}</span>
+          </div>
           <div className="longterm-summary__controls">
             <div className="longterm-summary__item longterm-summary__item--controls">
               <span className="longterm-summary__label">Grouping Mode</span>
               <div className="button-group button-group--micro">
-                <button type="button" className={`button button--micro${financialGrouping === "total" ? " button--micro-active" : ""}`} onClick={() => setFinancialGrouping("total")}>
-                  Total
-                </button>
-                <button type="button" className={`button button--micro${financialGrouping === "kind" ? " button--micro-active" : ""}`} onClick={() => setFinancialGrouping("kind")}>
-                  By Kind
-                </button>
+                <PanelControlsButton active={financialGrouping === "total"} onClick={() => setFinancialGrouping("total")} content="Total" />
+                <PanelControlsButton active={financialGrouping === "kind"} onClick={() => setFinancialGrouping("kind")} content="By Kind" />
               </div>
             </div>
             <div className="longterm-summary__item longterm-summary__item--controls">
               <span className="longterm-summary__label">View Mode</span>
               <div className="button-group button-group--micro">
-                <button type="button" className={`button button--micro${financialView === "monthly" ? " button--micro-active" : ""}`} onClick={() => setFinancialView("monthly")}>
-                  Monthly
-                </button>
-                <button type="button" className={`button button--micro${financialView === "accumulate" ? " button--micro-active" : ""}`} onClick={() => setFinancialView("accumulate")}>
-                  Accumulate
-                </button>
+                <PanelControlsButton active={financialView === "monthly"} onClick={() => setFinancialView("monthly")} content="Monthly" />
+                <PanelControlsButton active={financialView === "accumulate"} onClick={() => setFinancialView("accumulate")} content="Accumulate" />
               </div>
             </div>
           </div>
@@ -464,7 +503,7 @@ const LongTermPanel: FC = () => {
           download: "Download",
           upload: "Upload",
           diskUsage: "Disk Usage",
-          diskEfficiency: "Download Ratio %",
+          diskEfficiency: "Download/Disk %",
         }
       : {
           downloadNormal: "Download Normal",
@@ -496,20 +535,8 @@ const LongTermPanel: FC = () => {
             <div className="longterm-summary__item longterm-summary__item--controls">
               <span className="longterm-summary__label">Series Mode</span>
               <div className="button-group button-group--micro">
-                <button
-                  type="button"
-                  className={`button button--micro${dataSeriesMode === "details" ? " button--micro-active" : ""}`}
-                  onClick={() => setDataSeriesMode("details")}
-                >
-                  Details
-                </button>
-                <button
-                  type="button"
-                  className={`button button--micro${dataSeriesMode === "totals" ? " button--micro-active" : ""}`}
-                  onClick={() => setDataSeriesMode("totals")}
-                >
-                  Totals
-                </button>
+                <PanelControlsButton active={dataSeriesMode === "details"} onClick={() => setDataSeriesMode("details")} content="Details" />
+                <PanelControlsButton active={dataSeriesMode === "totals"} onClick={() => setDataSeriesMode("totals")} content="Totals" />
               </div>
             </div>
           </div>
@@ -552,7 +579,7 @@ const LongTermPanel: FC = () => {
                   <Line yAxisId="left" type="monotone" dataKey="download" name="Download" stroke="rgba(56, 189, 248, 0.85)" strokeWidth={2} dot={false} isAnimationActive={false} />
                   <Line yAxisId="left" type="monotone" dataKey="upload" name="Upload" stroke="rgba(52, 211, 153, 0.85)" strokeWidth={2} dot={false} isAnimationActive={false} />
                   <Line yAxisId="right" type="monotone" dataKey="diskUsage" name="Disk Usage" stroke="#55f4f7" strokeWidth={2} dot={false} isAnimationActive={false} />
-                  <Line yAxisId="percent" type="monotone" dataKey="diskEfficiency" name="Disk Usage %" stroke="#9d4edd" strokeWidth={2} strokeDasharray="6 6" dot={false} isAnimationActive={false} />
+                  <Line yAxisId="percent" type="monotone" dataKey="diskEfficiency" name="Download/Disk %" stroke="#9d4edd" strokeWidth={2} strokeDasharray="6 6" dot={false} isAnimationActive={false} />
                 </>
               ) : (
                 <>
@@ -572,27 +599,30 @@ const LongTermPanel: FC = () => {
 
   return (
     <section className="panel">
-      <header className="panel__header">
-        <div>
-          <h2 className="panel__title">Long-Term Overview</h2>
-          <PanelSubtitle selectedNodes={selectedNodes}>
-            Historical payout data grouped by billing period.
-          </PanelSubtitle>
-        </div>
-        <div className="panel__actions panel__actions--stacked">
-          <button className="button" type="button" onClick={() => refresh()} disabled={isLoading}>
-            {isLoading ? "Loading…" : "Refresh"}
-          </button>
-          <div className="button-group button-group--micro">
-            <button type="button" className={`button button--micro${mode === "financial" ? " button--micro-active" : ""}`} onClick={() => setMode("financial")}>
-              Financial
-            </button>
-            <button type="button" className={`button button--micro${mode === "data" ? " button--micro-active" : ""}`} onClick={() => setMode("data")}>
-              Data
-            </button>
-          </div>
-        </div>
-      </header>
+      <PanelHeader
+        title="Long-Term Overview"
+        subtitle={<PanelSubtitle selectedNodes={selectedNodes}>Historical payout data grouped by billing period.</PanelSubtitle>}
+        onRefresh={refresh}
+        isRefreshing={isLoading}
+        controls={(
+          <>
+            <PanelControls
+              ariaLabel="Satellite filter"
+              buttons={satelliteButtonIds.map((satelliteId) => (
+                <PanelControlsButton key={satelliteId} active={selectedSatelliteId === satelliteId} onClick={() => setSelectedSatelliteId(satelliteId)} content={satelliteId === "All" ? "All" : translateSatelliteId(satelliteId)}
+                />
+              ))}
+            />
+            <PanelControls
+              ariaLabel="View mode"
+              buttons={[
+                <PanelControlsButton key="financial" active={mode === "financial"} onClick={() => setMode("financial")} content="Financial" />,
+                <PanelControlsButton key="data" active={mode === "data"} onClick={() => setMode("data")} content="Data" />,
+              ]}
+            />
+          </>
+        )}
+      />
 
       <div className="panel__body">
         {lastUpdated ? (

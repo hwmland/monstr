@@ -1,18 +1,19 @@
 import { FC, useCallback, useEffect, useRef, useState, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 
-import { resolveSuccessColor } from "../utils/colors";
-import type { TransferActualAggregated, PayoutNode } from "../types";
-import PanelSubtitle from "./PanelSubtitle";
+import { resolveSuccessColor } from "../../utils/colors";
+import type { TransferActualAggregated, PayoutNode } from "../../types";
+import PanelSubtitle from "../PanelSubtitle";
+import PanelHeader from "../PanelHeader";
 import {
   formatRateValue,
   formatSizeValue,
   pickRatePresentation,
   pickSizePresentation,
-} from "../utils/units";
-import type { RateUnit, SizeUnit } from "../utils/units";
-import { fetchPayoutCurrent } from "../services/apiClient";
-import { formatCurrency } from "../utils/units";
+} from "../../utils/units";
+import type { RateUnit, SizeUnit } from "../../utils/units";
+import { fetchPayoutCurrent } from "../../services/apiClient";
+import { formatCurrency } from "../../utils/units";
 
 interface MetricView {
   operationsTotal: number;
@@ -241,15 +242,12 @@ const ActualPerformancePanel: FC<ActualPerformancePanelProps> = ({
 
   return (
     <section className="panel">
-      <header className="panel__header">
-        <div>
-          <h2 className="panel__title">Actual Performance</h2>
-          <PanelSubtitle windowStart={aggregated?.startTime} windowEnd={aggregated?.endTime} selectedNodes={selectedNodes} />
-        </div>
-        <button className="button" type="button" onClick={handleRefresh} disabled={isLoading}>
-          {isLoading ? "Loading…" : "Refresh"}
-        </button>
-      </header>
+      <PanelHeader
+        title="Actual Performance"
+        subtitle={<PanelSubtitle windowStart={aggregated?.startTime} windowEnd={aggregated?.endTime} selectedNodes={selectedNodes} />}
+        onRefresh={handleRefresh}
+        isRefreshing={isLoading}
+      />
 
       {error ? <p className="panel__error">{error}</p> : null}
 

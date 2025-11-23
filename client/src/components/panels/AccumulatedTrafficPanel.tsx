@@ -1,12 +1,15 @@
 import type { FC } from "react";
 import { useEffect, useMemo, useState } from "react";
-import usePanelVisibilityStore from "../store/usePanelVisibility";
-import { fetchIntervalTransfers } from "../services/apiClient";
+import usePanelVisibilityStore from "../../store/usePanelVisibility";
+import { fetchIntervalTransfers } from "../../services/apiClient";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell, ReferenceLine } from "recharts";
-import { formatSizeValue, pickSizeUnit, pickRateUnit, formatRateValue } from "../utils/units";
-import Legend from "./Legend";
-import PanelSubtitle from "./PanelSubtitle";
-import { use24hTime } from "../utils/time";
+import { formatSizeValue, pickSizeUnit, pickRateUnit, formatRateValue } from "../../utils/units";
+import PanelSubtitle from "../PanelSubtitle";
+import PanelHeader from "../PanelHeader";
+import PanelControls from "../PanelControls";
+import PanelControlsButton from "../PanelControlsButton";
+import { use24hTime } from "../../utils/time";
+import Legend from "../Legend";
 
 type Mode = "size" | "count" | "speed";
 type Range = "5m" | "1h" | "6h" | "30h";
@@ -86,7 +89,7 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
   const { isVisible } = usePanelVisibilityStore();
   const show = isVisible("accumulatedTraffic");
   if (!show) return null;
-  const [mode, setMode] = useState<Mode>("size");
+  const [mode, setMode] = useState<Mode>("speed");
   const [range, setRange] = useState<Range>("1h");
   const [layout, setLayout] = useState<'stacked' | 'grouped'>('stacked');
   const [data, setData] = useState<any[] | null>(null);
@@ -258,38 +261,40 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
 
   return (
     <section className="panel">
-      <header className="panel__header">
-        <div>
-          <h2 className="panel__title">Accumulated Traffic</h2>
-                <PanelSubtitle windowStart={startTime} windowEnd={endTime} selectedNodes={selectedNodes} />
-        </div>
-          <div className="panel__actions panel__actions--stacked">
-          <button className="button" type="button" onClick={load} disabled={loading}>{loading ? "Loading…" : "Refresh"}</button>
-          <div className="panel-controls">
-            <div className="panel-controls__left">
-              <div className="button-group button-group--micro">
-                <button type="button" className={`button button--micro${layout === 'stacked' ? ' button--micro-active' : ''}`} onClick={() => setLayout('stacked')}>Stack</button>
-                <button type="button" className={`button button--micro${layout === 'grouped' ? ' button--micro-active' : ''}`} onClick={() => setLayout('grouped')}>Grp</button>
-              </div>
-            </div>
-            <div className="panel-controls__center">
-              <div className="button-group button-group--micro">
-                <button type="button" className={`button button--micro${mode === "size" ? " button--micro-active" : ""}`} onClick={() => setMode("size")}>Size</button>
-                <button type="button" className={`button button--micro${mode === "speed" ? " button--micro-active" : ""}`} onClick={() => setMode("speed")}>Speed</button>
-                <button type="button" className={`button button--micro${mode === "count" ? " button--micro-active" : ""}`} onClick={() => setMode("count")}>Count</button>
-              </div>
-            </div>
-            <div className="panel-controls__right">
-              <div className="button-group button-group--micro">
-                <button type="button" className={`button button--micro${range === "5m" ? " button--micro-active" : ""}`} onClick={() => setRange("5m")}>5m</button>
-                <button type="button" className={`button button--micro${range === "1h" ? " button--micro-active" : ""}`} onClick={() => setRange("1h")}>1h</button>
-                <button type="button" className={`button button--micro${range === "6h" ? " button--micro-active" : ""}`} onClick={() => setRange("6h")}>6h</button>
-                <button type="button" className={`button button--micro${range === "30h" ? " button--micro-active" : ""}`} onClick={() => setRange("30h")}>30h</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
+      <PanelHeader
+        title="Accumulated Traffic"
+        subtitle={<PanelSubtitle windowStart={startTime} windowEnd={endTime} selectedNodes={selectedNodes} />}
+        onRefresh={load}
+        isRefreshing={loading}
+        controls={(
+          <>
+            <PanelControls
+              ariaLabel="Layout"
+              buttons={[
+                <PanelControlsButton key="stack" active={layout === "stacked"} onClick={() => setLayout("stacked")} content="Stack" />,
+                <PanelControlsButton key="group" active={layout === "grouped"} onClick={() => setLayout("grouped")} content="Grp" />,
+              ]}
+            />
+            <PanelControls
+              ariaLabel="Display mode"
+              buttons={[
+                <PanelControlsButton key="speed" active={mode === "speed"} onClick={() => setMode("speed")} content="Speed" />,
+                <PanelControlsButton key="size" active={mode === "size"} onClick={() => setMode("size")} content="Size" />,
+                <PanelControlsButton key="count" active={mode === "count"} onClick={() => setMode("count")} content="Count" />,
+              ]}
+            />
+            <PanelControls
+              ariaLabel="Time range"
+              buttons={[
+                <PanelControlsButton key="5m" active={range === "5m"} onClick={() => setRange("5m")} content="5m" />,
+                <PanelControlsButton key="1h" active={range === "1h"} onClick={() => setRange("1h")} content="1h" />,
+                <PanelControlsButton key="6h" active={range === "6h"} onClick={() => setRange("6h")} content="6h" />,
+                <PanelControlsButton key="30h" active={range === "30h"} onClick={() => setRange("30h")} content="30h" />,
+              ]}
+            />
+          </>
+        )}
+      />
 
       <div className="panel__body">
         {error ? <p className="panel__error">{error}</p> : null}
@@ -324,7 +329,7 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                 <XAxis
                   dataKey="label"
-                  tick={{ fill: "var(--color-text-muted)", fontSize: 12 }}
+                  tick={{ fill: "var(--color-text-muted)", fontSize: 14 }}
                   tickFormatter={(v: any) => {
                     try {
                       const d = new Date(v);
@@ -389,7 +394,7 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
               </ResponsiveContainer>
             </div>
             <Legend items={[{ label: 'Download', color: '#10784A' }, { label: 'Upload', color: '#34D399' }]} />
-          </>
+            </>
         )}
       </div>
     </section>

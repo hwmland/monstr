@@ -11,11 +11,14 @@ import {
   YAxis,
 } from "recharts";
 
-import type { TransferActualData } from "../types";
-import Legend from "./Legend";
+import type { TransferActualData } from "../../types";
+import Legend from "../Legend";
 // PanelSubtitle will format timestamps according to user preference
-import PanelSubtitle from "./PanelSubtitle";
-import { formatSizeValue, pickSizeUnit } from "../utils/units";
+import PanelSubtitle from "../PanelSubtitle";
+import PanelHeader from "../PanelHeader";
+import PanelControls from "../PanelControls";
+import PanelControlsButton from "../PanelControlsButton";
+import { formatSizeValue, pickSizeUnit } from "../../utils/units";
 
 type SatelliteTrafficMode = "size" | "count";
 
@@ -182,33 +185,21 @@ const SatelliteTrafficPanel: FC<SatelliteTrafficPanelProps> = ({
 
   return (
     <section className="panel">
-      <header className="panel__header">
-        <div>
-          <h2 className="panel__title">Satellite Traffic</h2>
-          <PanelSubtitle windowStart={data?.startTime} windowEnd={data?.endTime} selectedNodes={selectedNodes} />
-        </div>
-        <div className="panel__actions panel__actions--stacked">
-          <button className="button" type="button" onClick={() => refresh()} disabled={isLoading}>
-            {isLoading ? "Loading…" : "Refresh"}
-          </button>
-          <div className="button-group button-group--micro">
-            <button
-              type="button"
-              className={`button button--micro${mode === "size" ? " button--micro-active" : ""}`}
-              onClick={() => setMode("size")}
-            >
-              Size
-            </button>
-            <button
-              type="button"
-              className={`button button--micro${mode === "count" ? " button--micro-active" : ""}`}
-              onClick={() => setMode("count")}
-            >
-              Count
-            </button>
-          </div>
-        </div>
-      </header>
+      <PanelHeader
+        title="Satellite Traffic"
+        subtitle={<PanelSubtitle windowStart={data?.startTime} windowEnd={data?.endTime} selectedNodes={selectedNodes} />}
+        onRefresh={refresh}
+        isRefreshing={isLoading}
+        controls={(
+          <PanelControls
+            ariaLabel="Display mode"
+            buttons={[
+              <PanelControlsButton key="size" active={mode === "size"} onClick={() => setMode("size")} content="Size" />,
+              <PanelControlsButton key="count" active={mode === "count"} onClick={() => setMode("count")} content="Count" />,
+            ]}
+          />
+        )}
+      />
 
       {error ? <p className="panel__error">{error}</p> : null}
 

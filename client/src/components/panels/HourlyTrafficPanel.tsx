@@ -1,13 +1,15 @@
 import type { FC } from "react";
 import { useEffect, useMemo, useState } from "react";
-import usePanelVisibilityStore from "../store/usePanelVisibility";
-import { fetchIntervalTransfers } from "../services/apiClient";
-import useSelectedNodesStore from "../store/useSelectedNodes";
-// PanelSubtitle will format timestamps according to user preference
-import PanelSubtitle from "./PanelSubtitle";
-import { pickRatePresentation, formatRateValue, formatSizeValue, pickSizePresentation } from "../utils/units";
-import { use24hTime } from "../utils/time";
-import { COLOR_STATUS_GREEN, COLOR_STATUS_YELLOW, COLOR_STATUS_RED } from "../constants/colors";
+import usePanelVisibilityStore from "../../store/usePanelVisibility";
+import { fetchIntervalTransfers } from "../../services/apiClient";
+import useSelectedNodesStore from "../../store/useSelectedNodes";
+import PanelSubtitle from "../PanelSubtitle";
+import PanelHeader from "../PanelHeader";
+import PanelControls from "../PanelControls";
+import PanelControlsButton from "../PanelControlsButton";
+import { pickRatePresentation, formatRateValue, formatSizeValue, pickSizePresentation } from "../../utils/units";
+import { use24hTime } from "../../utils/time";
+import { COLOR_STATUS_GREEN, COLOR_STATUS_YELLOW, COLOR_STATUS_RED } from "../../constants/colors";
 
 interface HourlyBucket {
   bucketStart: string; // ISO
@@ -47,8 +49,8 @@ const HourlyTrafficPanel: FC = () => {
     setLoading(true);
     setError(null);
     try {
-        const requestNodes = selectedNodes.includes("All") ? [] : selectedNodes;
-        const res = await fetchIntervalTransfers(requestNodes, '1h', 9);
+      const requestNodes = selectedNodes.includes("All") ? [] : selectedNodes;
+      const res = await fetchIntervalTransfers(requestNodes, "1h", 9);
       setStartTime(res.startTime ?? null);
       setEndTime(res.endTime ?? null);
       setData(Array.isArray(res.buckets) ? res.buckets : []);
@@ -73,18 +75,19 @@ const HourlyTrafficPanel: FC = () => {
     const handler = () => {
       setSystem24(use24hTime());
     };
-    window.addEventListener('pref_time_24h_changed', handler as EventListener);
-    return () => window.removeEventListener('pref_time_24h_changed', handler as EventListener);
+    window.addEventListener("pref_time_24h_changed", handler as EventListener);
+    return () => window.removeEventListener("pref_time_24h_changed", handler as EventListener);
   }, []);
 
   const rows = useMemo(() => {
     if (!data) return [];
+
     const mapped = data.map((b) => {
       const bs = new Date(b.bucketStart);
       const be = new Date(b.bucketEnd);
 
       // format hour-only (no minutes) and respect hour12 preference
-      const hourLabel = bs.toLocaleTimeString([], { hour: '2-digit', hour12: !system24 });
+      const hourLabel = bs.toLocaleTimeString([], { hour: "2-digit", hour12: !system24 });
       // compute success rates for DL and UL
       const dlSuccess = (b.countDlSuccNor ?? 0) + (b.countDlSuccRep ?? 0);
       const dlTotal = dlSuccess + (b.countDlFailNor ?? 0) + (b.countDlFailRep ?? 0);
@@ -94,17 +97,17 @@ const HourlyTrafficPanel: FC = () => {
       const ulTotal = ulSuccess + (b.countUlFailNor ?? 0) + (b.countUlFailRep ?? 0);
       const ulRatePct = ulTotal > 0 ? (ulSuccess / ulTotal) * 100 : 0;
 
-  // download/upload speed: sum of successful download bytes / bucket seconds
-  const dlBytes = (b.sizeDlSuccNor ?? 0) + (b.sizeDlSuccRep ?? 0);
-  const ulBytes = (b.sizeUlSuccNor ?? 0) + (b.sizeUlSuccRep ?? 0);
-  const seconds = Math.max(1, Math.floor((be.getTime() - bs.getTime()) / 1000));
-  const dlBps = dlBytes / seconds;
-  const ulBps = ulBytes / seconds;
+      // download/upload speed: sum of successful download bytes / bucket seconds
+      const dlBytes = (b.sizeDlSuccNor ?? 0) + (b.sizeDlSuccRep ?? 0);
+      const ulBytes = (b.sizeUlSuccNor ?? 0) + (b.sizeUlSuccRep ?? 0);
+      const seconds = Math.max(1, Math.floor((be.getTime() - bs.getTime()) / 1000));
+      const dlBps = dlBytes / seconds;
+      const ulBps = ulBytes / seconds;
 
-  const dlRate = pickRatePresentation(dlBps * 8); // bits per second
-  const ulRate = pickRatePresentation(ulBps * 8);
-  const dlSize = pickSizePresentation(dlBytes);
-  const ulSize = pickSizePresentation(ulBytes);
+      const dlRate = pickRatePresentation(dlBps * 8); // bits per second
+      const ulRate = pickRatePresentation(ulBps * 8);
+      const dlSize = pickSizePresentation(dlBytes);
+      const ulSize = pickSizePresentation(ulBytes);
 
       return {
         bucketStart: bs,
@@ -136,19 +139,21 @@ const HourlyTrafficPanel: FC = () => {
 
   return (
     <section className="panel">
-      <header className="panel__header">
-        <div>
-          <h2 className="panel__title">Hourly Traffic</h2>
-          <PanelSubtitle windowStart={startTime} windowEnd={endTime} selectedNodes={selectedNodes} />
-        </div>
-        <div className="panel__actions panel__actions--stacked">
-          <button className="button" type="button" onClick={load} disabled={loading}>{loading ? "Loading…" : "Refresh"}</button>
-          <div className="button-group button-group--micro">
-            <button type="button" className={`button button--micro${mode === "speed" ? " button--micro-active" : ""}`} onClick={() => setMode("speed")}>Speed</button>
-            <button type="button" className={`button button--micro${mode === "size" ? " button--micro-active" : ""}`} onClick={() => setMode("size")}>Size</button>
-          </div>
-        </div>
-      </header>
+      <PanelHeader
+        title="Hourly Traffic"
+        subtitle={<PanelSubtitle windowStart={startTime} windowEnd={endTime} selectedNodes={selectedNodes} />}
+        onRefresh={load}
+        isRefreshing={loading}
+        controls={(
+          <PanelControls
+            ariaLabel="Display mode"
+            buttons={[
+              <PanelControlsButton key="speed" active={mode === "speed"} onClick={() => setMode("speed")} content="Speed" />,
+              <PanelControlsButton key="size" active={mode === "size"} onClick={() => setMode("size")} content="Size" />,
+            ]}
+          />
+        )}
+      />
 
       <div className="panel__body">
         {error ? <p className="panel__error">{error}</p> : null}
