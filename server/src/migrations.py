@@ -157,9 +157,16 @@ def _migrate_3_to_4(conn: Connection) -> None:
     logger.info("Completed migration 3 -> 4")
 
 
+def _migrate_4_to_5(conn: Connection) -> None:
+    """Create DiskUsage table for disk usage snapshots."""
+    logger.info("Starting migration 4 -> 5: create DiskUsage table")
+    models.DiskUsage.__table__.create(conn, checkfirst=True)
+    logger.info("Completed migration 4 -> 5")
+
+
 MigrationFunc = type(_migrate_0_to_1)
 
-MIGRATIONS = (_migrate_0_to_1, _migrate_1_to_2, _migrate_2_to_3, _migrate_3_to_4)
+MIGRATIONS = (_migrate_0_to_1, _migrate_1_to_2, _migrate_2_to_3, _migrate_3_to_4, _migrate_4_to_5)
 LATEST_SCHEMA_VERSION = len(MIGRATIONS)
 
 

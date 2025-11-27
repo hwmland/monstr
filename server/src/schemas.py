@@ -460,3 +460,25 @@ class PaystubRead(BaseModel):
     distributed: float
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class DiskUsageFilters(BaseModel):
+    source: Optional[str] = Field(default=None, description="Filter by node/source name")
+    period: Optional[str] = Field(default=None, description="Filter by period identifier")
+    limit: int = Field(default=100, ge=1, le=1000)
+
+
+class DiskUsageRead(BaseModel):
+    source: str
+    period: str
+    max_usage: int = Field(serialization_alias="maxUsage")
+    trash_at_max_usage: int = Field(serialization_alias="trashAtMaxUsage")
+    max_trash: int = Field(serialization_alias="maxTrash")
+    usage_at_max_trash: int = Field(serialization_alias="usageAtMaxTrash")
+    usage_end: int = Field(serialization_alias="usageEnd")
+    free_end: int = Field(serialization_alias="freeEnd")
+    trash_end: int = Field(serialization_alias="trashEnd")
+    max_usage_at: datetime = Field(serialization_alias="maxUsageAt")
+    max_trash_at: datetime = Field(serialization_alias="maxTrashAt")
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)

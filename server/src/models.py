@@ -224,3 +224,52 @@ class HeldAmount(SQLModel, table=True):
         sa_column=Column(Float, nullable=False),
         description="Held amount (flat)",
     )
+
+
+class DiskUsage(SQLModel, table=True):
+    """Disk usage snapshots per node and period."""
+
+    source: str = Field(
+        sa_column=Column(String(32), primary_key=True, nullable=False),
+        description="Configured node name for the log source",
+    )
+    period: str = Field(
+        sa_column=Column(String(16), primary_key=True, nullable=False),
+        description="Period identifier (e.g. 2025-11-24)",
+    )
+    max_usage: int = Field(
+        sa_column=Column(Integer, nullable=False),
+        description="Maximum disk usage in bytes",
+    )
+    trash_at_max_usage: int = Field(
+        sa_column=Column(Integer, nullable=False),
+        description="Trash size in bytes when max usage occurred",
+    )
+    max_trash: int = Field(
+        sa_column=Column(Integer, nullable=False),
+        description="Maximum trash size in bytes",
+    )
+    usage_at_max_trash: int = Field(
+        sa_column=Column(Integer, nullable=False),
+        description="Disk usage in bytes when max trash occurred",
+    )
+    usage_end: int = Field(
+        sa_column=Column(Integer, nullable=False),
+        description="Disk usage at period end in bytes",
+    )
+    trash_end: int = Field(
+        sa_column=Column(Integer, nullable=False),
+        description="Trash size at period end in bytes",
+    )
+    free_end: int = Field(
+        sa_column=Column(Integer, nullable=False),
+        description="Free space at period end in bytes",
+    )
+    max_usage_at: datetime = Field(
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+        description="Timestamp when max usage occurred",
+    )
+    max_trash_at: datetime = Field(
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+        description="Timestamp when max trash occurred",
+    )
