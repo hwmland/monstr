@@ -17,7 +17,7 @@ from .. import database
 from ..repositories.held_amounts import HeldAmountRepository
 from ..repositories.paystubs import PaystubRepository
 from ..repositories.disk_usage import DiskUsageRepository
-from ..models import HeldAmount, Paystub, DiskUsage
+from ..models import SatelliteUsage, HeldAmount, Paystub, DiskUsage
 
 logger = get_logger(__name__)
 
@@ -77,6 +77,7 @@ class NodeRuntime:
     satellites: dict[str, SatelliteInfo] = field(default_factory=dict)
     last_paystub_at: Optional[datetime] = None
     last_paystub_period: Optional[str] = None
+    last_satellite_details_at: Optional[datetime] = None
 
 
 class NodeApiService:
@@ -217,6 +218,18 @@ class NodeApiService:
                 state.runtime.last_error = "payload processing failed"
             logger.debug(
                 "Node '%s' payload processing failed, consecutive failures=%d",
+                state.name,
+                state.runtime.consecutive_failures,
+            )
+            return
+
+        satellite_details_ok = await self._process_sno_satellite_details(client, state)
+        if not satellite_details_ok:
+            async with self._lock:
+                state.runtime.consecutive_failures += 1
+                state.runtime.last_error = "satellite-details processing failed"
+            logger.debug(
+                "Node '%s' satellite-details processing failed, consecutive failures=%d",
                 state.name,
                 state.runtime.consecutive_failures,
             )
@@ -500,6 +513,117 @@ class NodeApiService:
                     state.data.joined_at = joined_dt
             except Exception:
                 logger.debug("Failed to parse earliestJoinedAt for node %s: %s", state.name, earliest)
+
+        return True
+
+    async def _process_sno_satellite_details(self, client: httpx.AsyncClient, state: NodeState) -> bool:
+        """Fetch /api/sno/satellite/<id> payloads and persist satellite usage records."""
+
+        interval = max(1, int(self._settings.nodeapi_satellite_details_interval_seconds))
+        now = datetime.now(timezone.utc)
+        async with self._lock:
+            last_at = state.runtime.last_satellite_details_at
+            satellite_ids = list(state.runtime.satellites.keys())
+
+        if last_at and (now - last_at).total_seconds() < interval:
+            return True
+
+        if not satellite_ids:
+            async with self._lock:
+                state.runtime.last_satellite_details_at = now
+            return True
+
+        now = datetime.now(timezone.utc)
+        period = now.date().isoformat()
+        to_persist: list[SatelliteUsage] = []
+
+        for satellite_id in satellite_ids:
+            logger.debug("Processing satellite details for node %s satellite %s", state.name, satellite_id)
+            encoded_id = urllib.parse.quote(satellite_id, safe="")
+            path = f"/api/sno/satellite/{encoded_id}"
+            success, payload = await self._fetch_node_payload(client, state, path)
+            if not success or payload is None:
+                logger.warning("Satellite details fetch failed for node %s satellite %s", state.name, satellite_id)
+                return False
+            if not isinstance(payload, dict):
+                logger.warning("Satellite details payload was not an object for node %s satellite %s", state.name, satellite_id)
+                return False
+
+            bandwidth_daily = payload.get("bandwidthDaily")
+            if bandwidth_daily is not None and not isinstance(bandwidth_daily, list):
+                logger.warning("Satellite details payload had non-list bandwidthDaily for node %s satellite %s", state.name, satellite_id)
+                bandwidth_daily = None
+
+            storage_daily = payload.get("storageDaily")
+            if storage_daily is not None and not isinstance(storage_daily, list):
+                logger.warning("Satellite details payload had non-list storageDaily for node %s satellite %s", state.name, satellite_id)
+                storage_daily = None
+
+            def find_entry(entries: Optional[list[dict[str, Any]]]) -> Optional[dict[str, Any]]:
+                if not entries:
+                    return None
+                for entry in entries:
+                    if not isinstance(entry, dict):
+                        continue
+                    interval_start = entry.get("intervalStart")
+                    if isinstance(interval_start, str) and interval_start[:10] == period:
+                        return entry
+                return None
+
+            bandwidth_entry = find_entry(bandwidth_daily)
+            storage_entry = find_entry(storage_daily)
+
+            if bandwidth_entry is None and storage_entry is None:
+                continue
+
+            def to_int(value: Any) -> int:
+                try:
+                    return int(value)
+                except Exception:
+                    return 0
+
+            egress = {}
+            ingress = {}
+            delete_value = 0
+            if bandwidth_entry is not None:
+                egress_raw = bandwidth_entry.get("egress")
+                ingress_raw = bandwidth_entry.get("ingress")
+                egress = egress_raw if isinstance(egress_raw, dict) else {}
+                ingress = ingress_raw if isinstance(ingress_raw, dict) else {}
+                delete_value = to_int(bandwidth_entry.get("delete"))
+
+            disk_usage_value: Optional[int]
+            if storage_entry is None:
+                disk_usage_value = None
+            else:
+                disk_usage_value = to_int(storage_entry.get("atRestTotalBytes"))
+
+            record = SatelliteUsage(
+                source=state.name,
+                satellite_id=satellite_id,
+                period=period,
+                dl_usage=to_int(egress.get("usage")),
+                dl_repair=to_int(egress.get("repair")),
+                dl_audit=to_int(egress.get("audit")),
+                ul_usage=to_int(ingress.get("usage")),
+                ul_repair=to_int(ingress.get("repair")),
+                delete=delete_value,
+                disk_usage=disk_usage_value,
+            )
+            to_persist.append(record)
+
+        if to_persist:
+            try:
+                async with database.SessionFactory() as session:
+                    for record in to_persist:
+                        await session.merge(record)
+                    await session.commit()
+            except Exception:
+                logger.exception("Failed to persist SatelliteUsage records for node %s", state.name)
+                return False
+
+        async with self._lock:
+            state.runtime.last_satellite_details_at = now
 
         return True
 

@@ -11,6 +11,7 @@ from . import (
 	held_amounts,
 	paystubs,
 	diskusage,
+	satelliteusage,
 )
 
 
@@ -27,4 +28,5 @@ __all__ = [
 	"held_amounts",
 	"paystubs",
 	"diskusage",
+	"satelliteusage",
 ]

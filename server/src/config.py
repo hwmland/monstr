@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     # Interval (seconds) after which the held-history endpoint should be
     # re-queried for fresh per-satellite held amounts. Default: 5 minutes.
     nodeapi_held_history_interval_seconds: int = 300
+    # Interval (seconds) for processing /api/sno satellite details payloads.
+    # Default: 5 minutes.
+    nodeapi_satellite_details_interval_seconds: int = 300
     # Interval (seconds) after which the paystubs endpoint should be
     # re-queried. Default: 10 minutes.
     nodeapi_paystub_interval_seconds: int = 600

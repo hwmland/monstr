@@ -482,3 +482,29 @@ class DiskUsageRead(BaseModel):
     max_trash_at: datetime = Field(serialization_alias="maxTrashAt")
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class SatelliteUsageFilters(BaseModel):
+    source: Optional[str] = Field(default=None, description="Filter by node/source name")
+    satellite_id: Optional[str] = Field(
+        default=None,
+        description="Filter by satellite identifier",
+        serialization_alias="satelliteId",
+    )
+    period: Optional[str] = Field(default=None, description="Filter by period identifier")
+    limit: int = Field(default=100, ge=1, le=1000, description="Maximum number of records to return")
+
+
+class SatelliteUsageRead(BaseModel):
+    source: str
+    satellite_id: str = Field(serialization_alias="satelliteId")
+    period: str
+    dl_usage: int = Field(serialization_alias="dlUsage")
+    dl_repair: int = Field(serialization_alias="dlRepair")
+    dl_audit: int = Field(serialization_alias="dlAudit")
+    ul_usage: int = Field(serialization_alias="ulUsage")
+    ul_repair: int = Field(serialization_alias="ulRepair")
+    delete: int = Field(serialization_alias="delete")
+    disk_usage: Optional[int] = Field(default=None, serialization_alias="diskUsage")
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
