@@ -13,13 +13,19 @@ from server.src.core.logging import get_logger
 
 from ..config import Settings, SourceDefinition
 from .. import database
-from sqlalchemy import delete
 
 from ..repositories.held_amounts import HeldAmountRepository
 from ..repositories.paystubs import PaystubRepository
-from ..models import HeldAmount, Paystub
+from ..repositories.disk_usage import DiskUsageRepository
+from ..models import SatelliteUsage, HeldAmount, Paystub, DiskUsage
 
 logger = get_logger(__name__)
+
+@dataclass
+class SatelliteInfo:
+    """Runtime satellite information for a node."""
+
+    held_amount: Optional[float] = None
 
 
 @dataclass
@@ -67,10 +73,11 @@ class NodeRuntime:
     consecutive_failures: int = 0
     last_error: Optional[str] = None
     task: Optional[asyncio.Task] = None
-    # cached held amounts per satellite id -> amount
-    held_amounts: dict[str, Optional[float]] = field(default_factory=dict)
+    # cached satellite info keyed by satellite id
+    satellites: dict[str, SatelliteInfo] = field(default_factory=dict)
     last_paystub_at: Optional[datetime] = None
     last_paystub_period: Optional[str] = None
+    last_satellite_details_at: Optional[datetime] = None
 
 
 class NodeApiService:
@@ -184,6 +191,22 @@ class NodeApiService:
         # extend with a specific API path when invoking `_fetch_node_payload`.
         logger.debug("Polling nodeapi endpoint for node '%s': %s", state.name, state.runtime.url)
 
+        # Process the canonical /api/sno payload which may contain per-satellite
+        # information (including satellite ids). This helper mirrors the
+        # pattern used by the other processors and may populate the
+        # state.runtime.held_amounts cache by reading from the HeldAmount table.
+        sno_ok = await self._process_sno(client, state)
+        if not sno_ok:
+            async with self._lock:
+                state.runtime.consecutive_failures += 1
+                state.runtime.last_error = "payload processing failed"
+            logger.debug(
+                "Node '%s' /api/sno processing failed, consecutive failures=%d",
+                state.name,
+                state.runtime.consecutive_failures,
+            )
+            return
+
         # Process sno satellites payload (fetching happens inside the
         # processing helper). The helper returns True on success.
         satellites_ok = await self._process_sno_satellites(client, state)
@@ -200,17 +223,13 @@ class NodeApiService:
             )
             return
 
-        # Process the canonical /api/sno payload which may contain per-satellite
-        # information (including satellite ids). This helper mirrors the
-        # pattern used by the other processors and may populate the
-        # state.runtime.held_amounts cache by reading from the HeldAmount table.
-        sno_ok = await self._process_sno(client, state)
-        if not sno_ok:
+        satellite_details_ok = await self._process_sno_satellite_details(client, state)
+        if not satellite_details_ok:
             async with self._lock:
                 state.runtime.consecutive_failures += 1
-                state.runtime.last_error = "payload processing failed"
+                state.runtime.last_error = "satellite-details processing failed"
             logger.debug(
-                "Node '%s' /api/sno processing failed, consecutive failures=%d",
+                "Node '%s' satellite-details processing failed, consecutive failures=%d",
                 state.name,
                 state.runtime.consecutive_failures,
             )
@@ -497,6 +516,116 @@ class NodeApiService:
 
         return True
 
+    async def _process_sno_satellite_details(self, client: httpx.AsyncClient, state: NodeState) -> bool:
+        """Fetch /api/sno/satellite/<id> payloads and persist satellite usage records."""
+
+        interval = max(1, int(self._settings.nodeapi_satellite_details_interval_seconds))
+        now = datetime.now(timezone.utc)
+        async with self._lock:
+            last_at = state.runtime.last_satellite_details_at
+            satellite_ids = list(state.runtime.satellites.keys())
+
+        if last_at and (now - last_at).total_seconds() < interval:
+            return True
+
+        if not satellite_ids:
+            async with self._lock:
+                state.runtime.last_satellite_details_at = now
+            return True
+
+        now = datetime.now(timezone.utc)
+        period = now.date().isoformat()
+        to_persist: list[SatelliteUsage] = []
+
+        for satellite_id in satellite_ids:
+            logger.debug("Processing satellite details for node %s satellite %s", state.name, satellite_id)
+            encoded_id = urllib.parse.quote(satellite_id, safe="")
+            path = f"/api/sno/satellite/{encoded_id}"
+            success, payload = await self._fetch_node_payload(client, state, path)
+            if not success or payload is None:
+                logger.warning("Satellite details fetch failed for node %s satellite %s", state.name, satellite_id)
+                return False
+            if not isinstance(payload, dict):
+                logger.warning("Satellite details payload was not an object for node %s satellite %s", state.name, satellite_id)
+                return False
+
+            bandwidth_daily = payload.get("bandwidthDaily")
+            if bandwidth_daily is not None and not isinstance(bandwidth_daily, list):
+                logger.warning("Satellite details payload had non-list bandwidthDaily for node %s satellite %s", state.name, satellite_id)
+                bandwidth_daily = None
+
+            storage_daily = payload.get("storageDaily")
+            if storage_daily is not None and not isinstance(storage_daily, list):
+                logger.warning("Satellite details payload had non-list storageDaily for node %s satellite %s", state.name, satellite_id)
+                storage_daily = None
+
+            def find_entry(entries: Optional[list[dict[str, Any]]]) -> Optional[dict[str, Any]]:
+                if not entries:
+                    return None
+                for entry in entries:
+                    if not isinstance(entry, dict):
+                        continue
+                    interval_start = entry.get("intervalStart")
+                    if isinstance(interval_start, str) and interval_start[:10] == period:
+                        return entry
+                return None
+
+            bandwidth_entry = find_entry(bandwidth_daily)
+            storage_entry = find_entry(storage_daily)
+
+            if bandwidth_entry is None and storage_entry is None:
+                continue
+
+            def to_int(value: Any) -> int:
+                try:
+                    return int(value)
+                except Exception:
+                    return 0
+
+            egress = {}
+            ingress = {}
+            delete_value = 0
+            if bandwidth_entry is not None:
+                egress_raw = bandwidth_entry.get("egress")
+                ingress_raw = bandwidth_entry.get("ingress")
+                egress = egress_raw if isinstance(egress_raw, dict) else {}
+                ingress = ingress_raw if isinstance(ingress_raw, dict) else {}
+                delete_value = to_int(bandwidth_entry.get("delete"))
+
+            disk_usage_value: Optional[int]
+            if storage_entry is None:
+                disk_usage_value = None
+            else:
+                disk_usage_value = to_int(storage_entry.get("atRestTotalBytes"))
+
+            record = SatelliteUsage(
+                source=state.name,
+                satellite_id=satellite_id,
+                period=period,
+                dl_usage=to_int(egress.get("usage")),
+                dl_repair=to_int(egress.get("repair")),
+                dl_audit=to_int(egress.get("audit")),
+                ul_usage=to_int(ingress.get("usage")),
+                ul_repair=to_int(ingress.get("repair")),
+                delete=delete_value,
+                disk_usage=disk_usage_value,
+            )
+            to_persist.append(record)
+
+        if to_persist:
+            try:
+                async with database.SessionFactory() as session:
+                    for record in to_persist:
+                        await session.merge(record)
+                    await session.commit()
+            except Exception:
+                logger.exception("Failed to persist SatelliteUsage records for node %s", state.name)
+                return False
+
+        async with self._lock:
+            state.runtime.last_satellite_details_at = now
+
+        return True
 
     async def _process_sno(self, client: httpx.AsyncClient, state: NodeState) -> bool:
         """Fetch and process the canonical /api/sno payload.
@@ -514,23 +643,24 @@ class NodeApiService:
 
         # Attempt to extract satellite identifiers from a mapping or a list
         sat_ids: list[str] = []
-        satellites = payload.get("satellites")
-        if isinstance(satellites, dict):
-            sat_ids = list(satellites.keys())
-        elif isinstance(satellites, list):
-            for item in satellites:
+        satellites_payload = payload.get("satellites")
+        if isinstance(satellites_payload, list):
+            for item in satellites_payload:
                 if isinstance(item, dict):
-                    sid = item.get("satelliteId") or item.get("satellite_id") or item.get("id")
+                    sid = item.get("id")
                     if isinstance(sid, str):
                         sat_ids.append(sid)
 
         if sat_ids:
             # Determine which satellite ids we actually need to query while
             # holding the lock to avoid races with other tasks mutating the
-            # runtime.held_amounts mapping.
+            # runtime satellites mapping.
             async with self._lock:
-                existing = set(state.runtime.held_amounts.keys())
-            to_query = [sid for sid in sat_ids if sid not in existing]
+                existing_info = state.runtime.satellites
+                existing_ids = set(existing_info.keys())
+                for sid in sat_ids:
+                    existing_info.setdefault(sid, SatelliteInfo())
+            to_query = [sid for sid in sat_ids if sid not in existing_ids]
 
             if to_query:
                 new_values: dict[str, float] = {}
@@ -549,26 +679,126 @@ class NodeApiService:
                     # the public total_held_amount so callers reading
                     # NodeData see an up-to-date aggregated value.
                     async with self._lock:
-                        state.runtime.held_amounts.update(new_values)
+                        for sid, amount in new_values.items():
+                            info = state.runtime.satellites.setdefault(sid, SatelliteInfo())
+                            info.held_amount = amount
                         # Compute total across known satellites (ignore None).
                         # If there are no numeric values, leave as None to
                         # indicate unknown; otherwise store the numeric sum
                         # (0.0 is a valid total and should be preserved).
                         total = 0.0
                         numeric_count = 0
-                        for v in state.runtime.held_amounts.values():
-                            if v is None:
+                        for info in state.runtime.satellites.values():
+                            value = info.held_amount
+                            if value is None:
                                 continue
                             try:
-                                total += float(v)
+                                total += float(value)
                                 numeric_count += 1
                             except Exception:
                                 # Skip non-convertible values
                                 continue
                         state.data.total_held_amount = total if numeric_count > 0 else None
 
-        return True
+        # Process disk usage snapshot regardless of presence of satellite ids
+        disk_payload = payload.get("diskSpace")
+        if isinstance(disk_payload, dict):
+            def to_int(v: Any) -> int:
+                try:
+                    return int(v)
+                except Exception:
+                    return 0
 
+            used = to_int(disk_payload.get("used"))
+            available = to_int(disk_payload.get("available"))
+            trash = to_int(disk_payload.get("trash"))
+            now = datetime.now(timezone.utc)
+            period = now.date().isoformat()
+
+            try:
+                async with database.SessionFactory() as session:
+                    repo = DiskUsageRepository(session)
+                    existing = await repo.get_by_source_period(state.name, period)
+                    if existing is None:
+                        rec = DiskUsage(
+                            source=state.name,
+                            period=period,
+                            max_usage=used,
+                            trash_at_max_usage=trash,
+                            max_trash=trash,
+                            usage_at_max_trash=used,
+                            usage_end=used,
+                            trash_end=trash,
+                            free_end=available,
+                            max_usage_at=now,
+                            max_trash_at=now,
+                        )
+                        # Log the full record values being created
+                        logger.debug(
+                            "Creating DiskUsage record: %s",
+                            {
+                                "source": rec.source,
+                                "period": rec.period,
+                                "max_usage": rec.max_usage,
+                                "trash_at_max_usage": rec.trash_at_max_usage,
+                                "max_trash": rec.max_trash,
+                                "usage_at_max_trash": rec.usage_at_max_trash,
+                                "usage_end": rec.usage_end,
+                                "trash_end": rec.trash_end,
+                                "free_end": rec.free_end,
+                                "max_usage_at": rec.max_usage_at.isoformat() if rec.max_usage_at else None,
+                                "max_trash_at": rec.max_trash_at.isoformat() if rec.max_trash_at else None,
+                            },
+                        )
+                        session.add(rec)
+                        await session.flush()
+                        await session.commit()
+                    else:
+                        rec: DiskUsage = existing
+                        changed = False
+                        if used > (rec.max_usage or 0):
+                            rec.max_usage = used
+                            rec.trash_at_max_usage = trash
+                            rec.max_usage_at = now
+                            changed = True
+                        if trash > (rec.max_trash or 0):
+                            rec.max_trash = trash
+                            rec.usage_at_max_trash = used
+                            rec.max_trash_at = now
+                            changed = True
+
+                        # Only update end-of-period values if they differ
+                        if rec.usage_end != used or rec.trash_end != trash or rec.free_end != available:
+                            rec.usage_end = used
+                            rec.trash_end = trash
+                            rec.free_end = available
+                            changed = True
+
+                        if changed:
+                            logger.debug(
+                                "Updated DiskUsage record: %s",
+                                {
+                                    "source": rec.source,
+                                    "period": rec.period,
+                                    "max_usage": rec.max_usage,
+                                    "trash_at_max_usage": rec.trash_at_max_usage,
+                                    "max_trash": rec.max_trash,
+                                    "usage_at_max_trash": rec.usage_at_max_trash,
+                                    "usage_end": rec.usage_end,
+                                    "trash_end": rec.trash_end,
+                                    "free_end": rec.free_end,
+                                    "max_usage_at": rec.max_usage_at.isoformat() if rec.max_usage_at else None,
+                                    "max_trash_at": rec.max_trash_at.isoformat() if rec.max_trash_at else None,
+                                },
+                            )
+                            session.add(rec)
+                            await session.flush()
+                            await session.commit()
+            except Exception:
+                logger.exception("Failed to persist DiskUsage record for node %s", state.name)
+                return False
+
+        return True
 
     async def _process_held_history(self, client: httpx.AsyncClient, state: NodeState) -> bool:
         """Fetch and process /api/heldamount/held-history payload.
@@ -618,7 +848,9 @@ class NodeApiService:
         # satellites changed. We intentionally do NOT hold the lock while
         # performing DB writes to avoid blocking the poller.
         async with self._lock:
-            existing_snapshot = dict(state.runtime.held_amounts)
+            existing_snapshot = {
+                sid: info.held_amount for sid, info in state.runtime.satellites.items()
+            }
 
         # Determine which satellite values actually changed (including
         # transitions from None->number or number->None). We only persist
@@ -657,14 +889,17 @@ class NodeApiService:
 
         # Update runtime mapping under lock and compute total
         async with self._lock:
-            state.runtime.held_amounts.update(mapping)
+            for sid, value in mapping.items():
+                info = state.runtime.satellites.setdefault(sid, SatelliteInfo())
+                info.held_amount = value
             total = 0.0
             numeric_count = 0
-            for v in state.runtime.held_amounts.values():
-                if v is None:
+            for info in state.runtime.satellites.values():
+                value = info.held_amount
+                if value is None:
                     continue
                 try:
-                    total += float(v)
+                    total += float(value)
                     numeric_count += 1
                 except Exception:
                     continue

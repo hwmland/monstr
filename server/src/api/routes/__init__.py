@@ -10,6 +10,8 @@ from . import (
 	payout,
 	held_amounts,
 	paystubs,
+	diskusage,
+	satelliteusage,
 )
 
 
@@ -25,4 +27,6 @@ __all__ = [
 	"payout",
 	"held_amounts",
 	"paystubs",
+	"diskusage",
+	"satelliteusage",
 ]

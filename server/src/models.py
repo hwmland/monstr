@@ -224,3 +224,98 @@ class HeldAmount(SQLModel, table=True):
         sa_column=Column(Float, nullable=False),
         description="Held amount (flat)",
     )
+
+
+class DiskUsage(SQLModel, table=True):
+    """Disk usage snapshots per node and period."""
+
+    source: str = Field(
+        sa_column=Column(String(32), primary_key=True, nullable=False),
+        description="Configured node name for the log source",
+    )
+    period: str = Field(
+        sa_column=Column(String(16), primary_key=True, nullable=False),
+        description="Period identifier (e.g. 2025-11-24)",
+    )
+    max_usage: int = Field(
+        sa_column=Column(Integer, nullable=False),
+        description="Maximum disk usage in bytes",
+    )
+    trash_at_max_usage: int = Field(
+        sa_column=Column(Integer, nullable=False),
+        description="Trash size in bytes when max usage occurred",
+    )
+    max_trash: int = Field(
+        sa_column=Column(Integer, nullable=False),
+        description="Maximum trash size in bytes",
+    )
+    usage_at_max_trash: int = Field(
+        sa_column=Column(Integer, nullable=False),
+        description="Disk usage in bytes when max trash occurred",
+    )
+    usage_end: int = Field(
+        sa_column=Column(Integer, nullable=False),
+        description="Disk usage at period end in bytes",
+    )
+    trash_end: int = Field(
+        sa_column=Column(Integer, nullable=False),
+        description="Trash size at period end in bytes",
+    )
+    free_end: int = Field(
+        sa_column=Column(Integer, nullable=False),
+        description="Free space at period end in bytes",
+    )
+    max_usage_at: datetime = Field(
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+        description="Timestamp when max usage occurred",
+    )
+    max_trash_at: datetime = Field(
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+        description="Timestamp when max trash occurred",
+    )
+
+
+class SatelliteUsage(SQLModel, table=True):
+    """Aggregated per-satellite bandwidth metrics per node and period."""
+
+    source: str = Field(
+        sa_column=Column(String(32), primary_key=True, nullable=False),
+        description="Configured node name for the log source",
+    )
+    satellite_id: str = Field(
+        sa_column=Column("satelliteId", String(64), primary_key=True, nullable=False),
+        description="Satellite identifier",
+    )
+    period: str = Field(
+        sa_column=Column(String(16), primary_key=True, nullable=False),
+        description="Period identifier (e.g. 2025-11-24)",
+    )
+    dl_usage: int = Field(
+        sa_column=Column("DlUsage", Integer, nullable=False),
+        description="Download usage bytes",
+    )
+    dl_repair: int = Field(
+        sa_column=Column("DlRepair", Integer, nullable=False),
+        description="Download repair bytes",
+    )
+    dl_audit: int = Field(
+        sa_column=Column("DlAudit", Integer, nullable=False),
+        description="Download audit bytes",
+    )
+    ul_usage: int = Field(
+        sa_column=Column("UlUsage", Integer, nullable=False),
+        description="Upload usage bytes",
+    )
+    ul_repair: int = Field(
+        sa_column=Column("UlRepair", Integer, nullable=False),
+        description="Upload repair bytes",
+    )
+    delete: int = Field(
+        sa_column=Column("delete", Integer, nullable=False),
+        description="Delete ???",
+    )
+    disk_usage: Optional[int] = Field(
+        default=None,
+        sa_column=Column("DiskUsage", Integer, nullable=True),
+        description="Disk usage bytes recorded at the end of the period",
+    )
