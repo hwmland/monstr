@@ -8,31 +8,71 @@ import PanelSubtitle from "../PanelSubtitle";
 import PanelHeader from "../PanelHeader";
 import PanelControls from "../PanelControls";
 import PanelControlsButton from "../PanelControlsButton";
+import PanelControlsCombo from "../PanelControlsCombo";
 import { use24hTime } from "../../utils/time";
 import Legend from "../Legend";
 
 type Mode = "size" | "count" | "speed";
-type Range = "5m" | "1h" | "6h" | "30h";
+type Range = "5m" | "1h" | "6h" | "30h" | "8d" | "30d" | "90d";
 
 const RANGE_MAP: Record<Range, { intervalLength: string; numberOfIntervals: number }> = {
   "5m": { intervalLength: "10s", numberOfIntervals: 30 },
   "1h": { intervalLength: "2m", numberOfIntervals: 30 },
   "6h": { intervalLength: "10m", numberOfIntervals: 36 },
   "30h": { intervalLength: "1h", numberOfIntervals: 30 },
+  "8d": { intervalLength: "6h", numberOfIntervals: 32 },
+  "30d": { intervalLength: "1d", numberOfIntervals: 30 },
+  "90d": { intervalLength: "3d", numberOfIntervals: 30 },
 };
+
+const LONG_RANGE_OPTIONS: Array<{ value: Range; label: string }> = [
+  { value: "8d", label: "8d" },
+  { value: "30d", label: "30d" },
+  { value: "90d", label: "90d" },
+];
 
 interface AccumulatedTrafficPanelProps {
   selectedNodes: string[];
 }
 
-const formatTimestampLabel = (value: string, use24h: boolean) => {
+const LONG_RANGE_SET = new Set<Range>(["8d", "30d", "90d"]);
+
+const formatDayMonth = (date: Date) => {
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${day}/${month}`;
+};
+
+const formatAxisLabel = (value: string, range: Range, use24h: boolean) => {
   try {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) {
       return value;
     }
-    const options = { hour: "2-digit", minute: "2-digit", hour12: !use24h } as const;
-    return date.toLocaleTimeString([], options);
+    if (LONG_RANGE_SET.has(range)) {
+      return formatDayMonth(date);
+    }
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: !use24h } as const);
+  } catch {
+    return value;
+  }
+};
+
+const formatTooltipLabel = (value: string, range: Range, use24h: boolean) => {
+  try {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    if (range === "8d") {
+      const dayMonth = formatDayMonth(date);
+      const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: !use24h } as const);
+      return `${dayMonth} ${time}`;
+    }
+    if (range === "30d" || range === "90d") {
+      return formatDayMonth(date);
+    }
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: !use24h } as const);
   } catch {
     return value;
   }
@@ -46,7 +86,8 @@ const AccumulatedTrafficTooltip: FC<{
   displayUnit: string;
   displayFactor: number;
   use24h: boolean;
-}> = ({ active, payload, label, mode, displayUnit, displayFactor, use24h }) => {
+  range: Range;
+}> = ({ active, payload, label, mode, displayUnit, displayFactor, use24h, range }) => {
   if (!active || !payload || payload.length === 0) {
     return null;
   }
@@ -69,7 +110,7 @@ const AccumulatedTrafficTooltip: FC<{
   return (
     <div className="chart-tooltip">
       <div className="chart-tooltip__label">
-        {label ? `At ${formatTimestampLabel(label, use24h)}` : "Bucket"}
+        {label ? `At ${formatTooltipLabel(label, range, use24h)}` : "Bucket"}
       </div>
       {entries.map((entry) => {
         const key = entry.dataKey ?? entry.name ?? "Series";
@@ -101,7 +142,6 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
   const [hoverLabel, setHoverLabel] = useState<string | null>(null);
   const [hoverSeries, setHoverSeries] = useState<'dl' | 'ul' | null>(null);
   const [chartWidth, setChartWidth] = useState<number | null>(null);
-
   const load = async () => {
     setLoading(true);
     setError(null);
@@ -121,7 +161,11 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
 
   useEffect(() => {
     load();
-    const refreshIntervalMs = range === "5m" ? 10_000 : 60_000;
+    const refreshIntervalMs = range === "5m"
+      ? 10_000
+      : LONG_RANGE_SET.has(range)
+        ? 300_000
+        : 60_000;
     const id = setInterval(load, refreshIntervalMs);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -290,6 +334,8 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
                 <PanelControlsButton key="1h" active={range === "1h"} onClick={() => setRange("1h")} content="1h" />,
                 <PanelControlsButton key="6h" active={range === "6h"} onClick={() => setRange("6h")} content="6h" />,
                 <PanelControlsButton key="30h" active={range === "30h"} onClick={() => setRange("30h")} content="30h" />,
+                <PanelControlsCombo key="long-range" options={LONG_RANGE_OPTIONS} activeValue={range} defaultValue="90d" onSelect={(value) => setRange(value as Range)}
+                />,
               ]}
             />
           </>
@@ -330,15 +376,7 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
                 <XAxis
                   dataKey="label"
                   tick={{ fill: "var(--color-text-muted)", fontSize: 14 }}
-                  tickFormatter={(v: any) => {
-                    try {
-                      const d = new Date(v);
-                      const hour12 = system24 ? false : true;
-                      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12 } as any);
-                    } catch {
-                      return String(v);
-                    }
-                  }}
+                  tickFormatter={(v: any) => formatAxisLabel(String(v), range, system24)}
                   interval={'preserveStartEnd'}
                   angle={-45}
                   textAnchor="end"
@@ -356,6 +394,7 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
                       displayUnit={displayUnit}
                       displayFactor={displayFactor}
                       use24h={system24}
+                      range={range}
                     />
                   )}
                   cursor={{ fill: "rgba(148, 163, 184, 0.05)" }}

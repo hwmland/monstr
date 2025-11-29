@@ -324,6 +324,39 @@ class IntervalTransfersRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class TransferTotalsRequest(BaseModel):
+    nodes: list[str] = Field(default_factory=list, description="Nodes to include in totals; empty means all nodes.")
+    interval: str = Field(default="1h", description="Interval length string like '30d', '16h', '30m'.")
+
+
+class TransferTotalsNode(BaseModel):
+    size_dl_succ_nor: int = Field(default=0, serialization_alias="sizeDlSuccNor")
+    size_ul_succ_nor: int = Field(default=0, serialization_alias="sizeUlSuccNor")
+    size_dl_fail_nor: int = Field(default=0, serialization_alias="sizeDlFailNor")
+    size_ul_fail_nor: int = Field(default=0, serialization_alias="sizeUlFailNor")
+    size_dl_succ_rep: int = Field(default=0, serialization_alias="sizeDlSuccRep")
+    size_ul_succ_rep: int = Field(default=0, serialization_alias="sizeUlSuccRep")
+    size_dl_fail_rep: int = Field(default=0, serialization_alias="sizeDlFailRep")
+    size_ul_fail_rep: int = Field(default=0, serialization_alias="sizeUlFailRep")
+    count_dl_succ_nor: int = Field(default=0, serialization_alias="countDlSuccNor")
+    count_ul_succ_nor: int = Field(default=0, serialization_alias="countUlSuccNor")
+    count_dl_fail_nor: int = Field(default=0, serialization_alias="countDlFailNor")
+    count_ul_fail_nor: int = Field(default=0, serialization_alias="countUlFailNor")
+    count_dl_succ_rep: int = Field(default=0, serialization_alias="countDlSuccRep")
+    count_ul_succ_rep: int = Field(default=0, serialization_alias="countUlSuccRep")
+    count_dl_fail_rep: int = Field(default=0, serialization_alias="countDlFailRep")
+    count_ul_fail_rep: int = Field(default=0, serialization_alias="countUlFailRep")
+
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+
+
+class TransferTotalsResponse(BaseModel):
+    interval_seconds: int = Field(serialization_alias="intervalSeconds")
+    totals: dict[str, TransferTotalsNode] = Field(default_factory=dict)
+
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+
+
 class OverallStatusRequest(BaseModel):
     nodes: list[str] = Field(default_factory=list, description="Nodes to include; empty means all nodes")
 

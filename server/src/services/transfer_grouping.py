@@ -72,16 +72,24 @@ class TransferGroupingService:
                     t1 = time.time()
                     logger.info("TransferGroupingService: process batch completed in %.2fms", (t1 - t0) * 1000.0)
 
-                    # Promote 1-minute groups into 5-minute groups when possible and time it.
-                    t0 = time.time()
-                    await self._promote_groups(grouped_repo, from_gran=1, to_gran=5, min_old_minutes=120, newest_threshold_minutes=90)
-                    t1 = time.time()
-                    logger.info("TransferGroupingService: promote groups completed in %.2fms", (t1 - t0) * 1000.0)
-                    # Promote 5-minute groups into 60-minute groups when possible and time it.
-                    t0 = time.time()
-                    await self._promote_groups(grouped_repo, from_gran=5, to_gran=60, min_old_minutes=36 * 60, newest_threshold_minutes=31 * 60)
-                    t1 = time.time()
-                    logger.info("TransferGroupingService: promote 5->60 groups completed in %.2fms", (t1 - t0) * 1000.0)
+                    rules = TransferGroupedRepository.PROMOTION_RULES
+                    for idx, rule in enumerate(rules[:-1]):
+                        to_rule = rules[idx + 1]
+                        t0 = time.time()
+                        await self._promote_groups(
+                            grouped_repo,
+                            from_gran=rule.granularity,
+                            to_gran=to_rule.granularity,
+                            min_old_minutes=rule.min_old_minutes,
+                            newest_threshold_minutes=rule.newest_threshold_minutes,
+                        )
+                        t1 = time.time()
+                        logger.info(
+                            "TransferGroupingService: promote %d->%d completed in %.2fms",
+                            rule.granularity,
+                            to_rule.granularity,
+                            (t1 - t0) * 1000.0,
+                        )
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001
