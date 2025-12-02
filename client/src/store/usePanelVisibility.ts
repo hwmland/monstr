@@ -22,6 +22,7 @@ interface PanelVisibilityState {
 }
 
 const DEFAULT_PANELS: Record<string, boolean> = {
+  nodeCompare: true,
   reputations: true,
   actualPerformance: true,
   satelliteTraffic: true,

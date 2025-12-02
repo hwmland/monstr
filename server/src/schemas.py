@@ -517,6 +517,41 @@ class DiskUsageRead(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
+class DiskUsageChangeRequest(BaseModel):
+    nodes: list[str] = Field(
+        default_factory=list,
+        description="Nodes to include when calculating usage change; empty means all nodes.",
+    )
+    interval_days: int = Field(
+        default=1,
+        ge=1,
+        description="Number of days to look back when calculating the usage change.",
+        serialization_alias="intervalDays",
+        validation_alias="intervalDays",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class DiskUsageChangeNode(BaseModel):
+    free_end: int = Field(default=0, serialization_alias="freeEnd")
+    usage_end: int = Field(default=0, serialization_alias="usageEnd")
+    trash_end: int = Field(default=0, serialization_alias="trashEnd")
+    free_change: int = Field(default=0, serialization_alias="freeChange")
+    usage_change: int = Field(default=0, serialization_alias="usageChange")
+    trash_change: int = Field(default=0, serialization_alias="trashChange")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class DiskUsageChangeResponse(BaseModel):
+    current_period: str = Field(serialization_alias="currentPeriod")
+    reference_period: str = Field(serialization_alias="referencePeriod")
+    nodes: dict[str, DiskUsageChangeNode] = Field(default_factory=dict)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class SatelliteUsageFilters(BaseModel):
     source: Optional[str] = Field(default=None, description="Filter by node/source name")
     satellite_id: Optional[str] = Field(

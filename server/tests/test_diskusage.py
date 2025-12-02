@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -103,3 +103,168 @@ async def test_filter_disk_usage_by_source() -> None:
     body = response.json()
     assert len(body) == 1
     assert body[0]["source"] == "node-a"
+
+
+@pytest.mark.asyncio
+async def test_disk_usage_usage_change_with_nodes() -> None:
+    app_settings = Settings(sources=[])
+    app = create_app(app_settings)
+    await database.init_database(app_settings)
+    transport = ASGITransport(app=app)
+
+    now = datetime.now(timezone.utc)
+    today = now.date()
+    yesterday = today - timedelta(days=1)
+
+    today_period = today.isoformat()
+    yesterday_period = yesterday.isoformat()
+
+    records = [
+        DiskUsage(
+            source="node-a",
+            period=yesterday_period,
+            max_usage=1000,
+            trash_at_max_usage=100,
+            max_trash=120,
+            usage_at_max_trash=900,
+            usage_end=900,
+            free_end=100,
+            trash_end=80,
+            max_usage_at=now,
+            max_trash_at=now,
+        ),
+        DiskUsage(
+            source="node-a",
+            period=today_period,
+            max_usage=1200,
+            trash_at_max_usage=110,
+            max_trash=150,
+            usage_at_max_trash=1000,
+            usage_end=1100,
+            free_end=150,
+            trash_end=90,
+            max_usage_at=now,
+            max_trash_at=now,
+        ),
+        DiskUsage(
+            source="node-b",
+            period=today_period,
+            max_usage=500,
+            trash_at_max_usage=50,
+            max_trash=75,
+            usage_at_max_trash=450,
+            usage_end=400,
+            free_end=600,
+            trash_end=70,
+            max_usage_at=now,
+            max_trash_at=now,
+        ),
+    ]
+
+    async with database.SessionFactory() as session:
+        session.add_all(records)
+        await session.commit()
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/diskusage/usage-change",
+            json={"nodes": ["node-a", "node-b"], "intervalDays": 1},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["currentPeriod"] == today_period
+    assert body["referencePeriod"] == yesterday_period
+
+    nodes = body["nodes"]
+    assert set(nodes.keys()) == {"node-a", "node-b"}
+
+    node_a = nodes["node-a"]
+    assert node_a["usageEnd"] == 1100
+    assert node_a["usageChange"] == 200
+    assert node_a["freeEnd"] == 150
+    assert node_a["freeChange"] == 50
+    assert node_a["trashEnd"] == 90
+    assert node_a["trashChange"] == 10
+
+    node_b = nodes["node-b"]
+    assert node_b["usageEnd"] == 400
+    assert node_b["usageChange"] == 400
+    assert node_b["freeEnd"] == 600
+    assert node_b["freeChange"] == 600
+    assert node_b["trashEnd"] == 70
+    assert node_b["trashChange"] == 70
+
+
+@pytest.mark.asyncio
+async def test_disk_usage_usage_change_all_nodes() -> None:
+    app_settings = Settings(sources=[])
+    app = create_app(app_settings)
+    await database.init_database(app_settings)
+    transport = ASGITransport(app=app)
+
+    now = datetime.now(timezone.utc)
+    today = now.date()
+    yesterday = today - timedelta(days=1)
+
+    today_period = today.isoformat()
+    yesterday_period = yesterday.isoformat()
+
+    records = [
+        DiskUsage(
+            source="node-a",
+            period=yesterday_period,
+            max_usage=700,
+            trash_at_max_usage=70,
+            max_trash=90,
+            usage_at_max_trash=650,
+            usage_end=650,
+            free_end=350,
+            trash_end=60,
+            max_usage_at=now,
+            max_trash_at=now,
+        ),
+        DiskUsage(
+            source="node-c",
+            period=today_period,
+            max_usage=800,
+            trash_at_max_usage=80,
+            max_trash=100,
+            usage_at_max_trash=750,
+            usage_end=750,
+            free_end=250,
+            trash_end=70,
+            max_usage_at=now,
+            max_trash_at=now,
+        ),
+    ]
+
+    async with database.SessionFactory() as session:
+        session.add_all(records)
+        await session.commit()
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/diskusage/usage-change",
+            json={"intervalDays": 1},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["currentPeriod"] == today_period
+    assert body["referencePeriod"] == yesterday_period
+
+    nodes = body["nodes"]
+    assert list(nodes.keys()) == ["node-a", "node-c"]
+
+    node_a = nodes["node-a"]
+    assert node_a["usageEnd"] == 0
+    assert node_a["usageChange"] == -650
+    assert node_a["trashChange"] == -60
+    assert node_a["freeChange"] == -350
+
+    node_c = nodes["node-c"]
+    assert node_c["usageEnd"] == 750
+    assert node_c["usageChange"] == 750
+    assert node_c["trashEnd"] == 70
+    assert node_c["trashChange"] == 70

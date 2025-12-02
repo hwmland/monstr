@@ -92,3 +92,42 @@ export interface PaystubRecord {
 export interface PaystubPeriodsResponse {
   periods: Record<string, PaystubRecord[]>;
 }
+
+export interface TransferTotalsNode {
+  sizeDlSuccNor: number;
+  sizeUlSuccNor: number;
+  sizeDlFailNor: number;
+  sizeUlFailNor: number;
+  sizeDlSuccRep: number;
+  sizeUlSuccRep: number;
+  sizeDlFailRep: number;
+  sizeUlFailRep: number;
+  countDlSuccNor: number;
+  countUlSuccNor: number;
+  countDlFailNor: number;
+  countUlFailNor: number;
+  countDlSuccRep: number;
+  countUlSuccRep: number;
+  countDlFailRep: number;
+  countUlFailRep: number;
+}
+
+export interface TransferTotalsResponse {
+  intervalSeconds: number;
+  totals: Record<string, TransferTotalsNode>;
+}
+
+export interface DiskUsageChangeNode {
+  freeEnd: number;
+  usageEnd: number;
+  trashEnd: number;
+  freeChange: number;
+  usageChange: number;
+  trashChange: number;
+}
+
+export interface DiskUsageChangeResponse {
+  currentPeriod: string;
+  referencePeriod: string;
+  nodes: Record<string, DiskUsageChangeNode>;
+}

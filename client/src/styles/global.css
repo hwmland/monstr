@@ -239,6 +239,36 @@ select.button option:disabled {
   }
 }
 
+.node-compare-charts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  width: 100%;
+}
+
+@media (min-width: 900px) {
+  .node-compare-charts {
+    flex-direction: row;
+  }
+}
+
+.node-compare-chart {
+  flex: 1;
+  min-width: 0;
+  height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.node-compare-chart__label {
+  margin-top: 2px;
+  margin-bottom: 0;
+  font-size: 14px;
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
 /* Controls layout inside panels that have multiple control groups */
 .panel-controls {
   display: flex;

@@ -3,12 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Sequence, TYPE_CHECKING
 from datetime import datetime, timezone
+from time import perf_counter
 
 from sqlalchemy import delete
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import TransferGrouped
+from ..core.logging import get_logger
+
+# module-level logger
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:  # pragma: no cover - used only for type checking
     from ..models import Transfer
@@ -98,16 +103,26 @@ class TransferGroupedRepository:
         """Return rows covering the requested window using aggregated tables and raw transfers."""
 
         rows: list[TransferGrouped] = []
+        total_start = perf_counter()
 
         cursor = rounded_start
         for rule in reversed(self.PROMOTION_RULES):
+            start = perf_counter()
             gran_rows = await self.list_for_sources_between(sources, cursor, end, granularity=rule.granularity)
+            duration_ms = int((perf_counter() - start) * 1000)
+            logger.debug("collect_interval_rows: %dms granularity=%s returned %d aggregated rows", duration_ms, rule.granularity, len(gran_rows))
             rows.extend(gran_rows)
             cursor = self._ensure_utc(self._max_interval_end(gran_rows, cursor))
 
         transfer_repo = TransferRepository(self._session)
+        start = perf_counter()
         transfers_since_gran1 = await transfer_repo.list_for_sources_between(sources or None, cursor, end)
+        duration_ms = int((perf_counter() - start) * 1000)
+        logger.debug("collect_interval_rows: %dms transfers_since_gran1 returned %d raw transfer rows", duration_ms, len(transfers_since_gran1))
         rows.extend(self._convert_transfers(transfers_since_gran1))
+
+        total_ms = int((perf_counter() - total_start) * 1000)
+        logger.debug("collect_interval_rows: %dms total elapsed, returning %d rows", total_ms, len(rows))
 
         return tuple(rows)
 
