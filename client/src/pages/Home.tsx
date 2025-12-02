@@ -1,6 +1,7 @@
 import ActualPerformancePanel from "../components/panels/ActualPerformancePanel";
 import LongTermPanel from "../components/panels/LongTermPanel";
 import NodesPanel from "../components/panels/NodesPanel";
+import NodeComparePanel from "../components/panels/NodeComparePanel";
 import ReputationsPanel from "../components/panels/ReputationsPanel";
 import SatelliteTrafficPanel from "../components/panels/SatelliteTrafficPanel";
 import DataSizeDistributionPanel from "../components/panels/DataSizeDistributionPanel";
@@ -11,6 +12,7 @@ import usePanelVisibilityStore from "../store/usePanelVisibility";
 
 const HomePage = () => {
   const { isVisible } = usePanelVisibilityStore();
+  const showNodeCompare = isVisible("nodeCompare");
   const showSatelliteTraffic = isVisible("satelliteTraffic");
   const showActualPerformance = isVisible("actualPerformance");
   const showHourlyTraffic = isVisible("hourlyTraffic");
@@ -28,6 +30,7 @@ const HomePage = () => {
     <div className="page">
       <NodesPanel />
       {showLongTerm ? <LongTermPanel /> : null}
+      {showNodeCompare ? <NodeComparePanel selectedNodes={selectedNodes} /> : null}
       {shouldRenderTransfers ? (
         <>
           <div className="transfer-panels">

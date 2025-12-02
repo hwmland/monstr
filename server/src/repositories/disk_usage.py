@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Iterable, List, Optional, Sequence
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,3 +32,37 @@ class DiskUsageRepository:
         if not row:
             return None
         return row[0]
+
+    async def list_for_period(
+        self,
+        period: str,
+        sources: Optional[Sequence[str]] = None,
+    ) -> List[DiskUsage]:
+        """Return all disk usage records matching the supplied period and optional sources."""
+
+        stmt = select(DiskUsage).where(DiskUsage.period == period)
+        if sources:
+            stmt = stmt.where(DiskUsage.source.in_(sources))
+
+        stmt = stmt.order_by(DiskUsage.source)
+        result = await self.session.execute(stmt)
+        return [row[0] for row in result.fetchall()]
+
+    async def list_for_periods(
+        self,
+        periods: Iterable[str],
+        sources: Optional[Sequence[str]] = None,
+    ) -> List[DiskUsage]:
+        """Return all disk usage records matching the supplied periods and optional sources."""
+
+        period_list = list(periods)
+        if not period_list:
+            return []
+
+        stmt = select(DiskUsage).where(DiskUsage.period.in_(period_list))
+        if sources:
+            stmt = stmt.where(DiskUsage.source.in_(sources))
+
+        stmt = stmt.order_by(DiskUsage.period.desc(), DiskUsage.source)
+        result = await self.session.execute(stmt)
+        return [row[0] for row in result.fetchall()]

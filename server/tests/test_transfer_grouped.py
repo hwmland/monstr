@@ -10,6 +10,7 @@ from server.src.config import Settings
 from server.src.core.app import create_app
 from server.src.repositories.transfer_grouped import TransferGroupedRepository
 from server.src.schemas import TransferGroupedCreate
+from server.src.api.routes.transfer_grouped import parse_interval_length
 
 
 @pytest.mark.asyncio
@@ -74,3 +75,80 @@ async def test_list_transfer_grouped_filters() -> None:
     assert len(body_class) == 1
     assert body_class[0]["source"] == "node-b"
     assert body_class[0]["sizeClass"] == "4K"
+
+
+def test_parse_interval_length_supports_days() -> None:
+    one_day = parse_interval_length("1d")
+    three_days = parse_interval_length("3d")
+
+    assert one_day == timedelta(days=1)
+    assert three_days == timedelta(days=3)
+
+
+@pytest.mark.asyncio
+async def test_transfer_totals_endpoint() -> None:
+    app_settings = Settings(sources=[])
+    app = create_app(app_settings)
+    await database.init_database(app_settings)
+    transport = ASGITransport(app=app)
+
+    now = datetime.now(timezone.utc)
+    older_start = (now - timedelta(minutes=90)).replace(second=0, microsecond=0)
+    older_end = older_start + timedelta(minutes=5)
+    recent_start = (now - timedelta(minutes=10)).replace(second=0, microsecond=0)
+    recent_end = recent_start + timedelta(minutes=1)
+
+    entries = [
+        TransferGroupedCreate(
+            source="node-a",
+            satellite_id="sat-1",
+            interval_start=older_start,
+            interval_end=older_end,
+            size_class="1K",
+            granularity=5,
+            size_ul_succ_rep=2048,
+            count_ul_succ_rep=2,
+        ),
+        TransferGroupedCreate(
+            source="node-a",
+            satellite_id="sat-1",
+            interval_start=recent_start,
+            interval_end=recent_end,
+            size_class="1K",
+            granularity=1,
+            size_dl_succ_nor=1024,
+            count_dl_succ_nor=1,
+        ),
+        TransferGroupedCreate(
+            source="node-b",
+            satellite_id="sat-2",
+            interval_start=older_start,
+            interval_end=older_end,
+            size_class="4K",
+            granularity=5,
+            size_dl_fail_nor=4096,
+            count_dl_fail_nor=4,
+        ),
+    ]
+
+    async with database.SessionFactory() as session:
+        repository = TransferGroupedRepository(session)
+        await repository.create_many(entries)
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/transfer-grouped/totals",
+            json={"nodes": ["node-a"], "interval": "2h"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intervalSeconds"] == 2 * 60 * 60
+    totals = body["totals"]
+    assert "node-a" in totals
+    assert "node-b" not in totals
+    node_a = totals["node-a"]
+    assert node_a["sizeDlSuccNor"] == 1024
+    assert node_a["sizeUlSuccRep"] == 2048
+    assert node_a["countDlSuccNor"] == 1
+    assert node_a["countUlSuccRep"] == 2

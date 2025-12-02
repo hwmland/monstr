@@ -117,7 +117,7 @@ class TransferGrouped(SQLModel, table=True):
         description="Inclusive interval start",
     )
     interval_end: datetime = Field(
-        sa_column=Column(DateTime(timezone=True), nullable=False),
+        sa_column=Column(DateTime(timezone=True), nullable=False, index=True),
         description="Exclusive interval end",
     )
     size_class: str = Field(
@@ -125,7 +125,7 @@ class TransferGrouped(SQLModel, table=True):
         description="Payload size class (e.g. 1K, 4K, 256K)",
     )
     granularity: int = Field(
-        sa_column=Column("granularity", Integer, nullable=False),
+        sa_column=Column("granularity", Integer, index=True, nullable=False),
         description="Granularity in minutes used to group this record",
     )
     size_dl_succ_nor: int = Field(default=0, description="Bytes for successful normal downloads")

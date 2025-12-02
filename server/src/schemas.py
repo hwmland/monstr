@@ -324,6 +324,39 @@ class IntervalTransfersRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class TransferTotalsRequest(BaseModel):
+    nodes: list[str] = Field(default_factory=list, description="Nodes to include in totals; empty means all nodes.")
+    interval: str = Field(default="1h", description="Interval length string like '30d', '16h', '30m'.")
+
+
+class TransferTotalsNode(BaseModel):
+    size_dl_succ_nor: int = Field(default=0, serialization_alias="sizeDlSuccNor")
+    size_ul_succ_nor: int = Field(default=0, serialization_alias="sizeUlSuccNor")
+    size_dl_fail_nor: int = Field(default=0, serialization_alias="sizeDlFailNor")
+    size_ul_fail_nor: int = Field(default=0, serialization_alias="sizeUlFailNor")
+    size_dl_succ_rep: int = Field(default=0, serialization_alias="sizeDlSuccRep")
+    size_ul_succ_rep: int = Field(default=0, serialization_alias="sizeUlSuccRep")
+    size_dl_fail_rep: int = Field(default=0, serialization_alias="sizeDlFailRep")
+    size_ul_fail_rep: int = Field(default=0, serialization_alias="sizeUlFailRep")
+    count_dl_succ_nor: int = Field(default=0, serialization_alias="countDlSuccNor")
+    count_ul_succ_nor: int = Field(default=0, serialization_alias="countUlSuccNor")
+    count_dl_fail_nor: int = Field(default=0, serialization_alias="countDlFailNor")
+    count_ul_fail_nor: int = Field(default=0, serialization_alias="countUlFailNor")
+    count_dl_succ_rep: int = Field(default=0, serialization_alias="countDlSuccRep")
+    count_ul_succ_rep: int = Field(default=0, serialization_alias="countUlSuccRep")
+    count_dl_fail_rep: int = Field(default=0, serialization_alias="countDlFailRep")
+    count_ul_fail_rep: int = Field(default=0, serialization_alias="countUlFailRep")
+
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+
+
+class TransferTotalsResponse(BaseModel):
+    interval_seconds: int = Field(serialization_alias="intervalSeconds")
+    totals: dict[str, TransferTotalsNode] = Field(default_factory=dict)
+
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+
+
 class OverallStatusRequest(BaseModel):
     nodes: list[str] = Field(default_factory=list, description="Nodes to include; empty means all nodes")
 
@@ -482,6 +515,41 @@ class DiskUsageRead(BaseModel):
     max_trash_at: datetime = Field(serialization_alias="maxTrashAt")
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class DiskUsageChangeRequest(BaseModel):
+    nodes: list[str] = Field(
+        default_factory=list,
+        description="Nodes to include when calculating usage change; empty means all nodes.",
+    )
+    interval_days: int = Field(
+        default=1,
+        ge=1,
+        description="Number of days to look back when calculating the usage change.",
+        serialization_alias="intervalDays",
+        validation_alias="intervalDays",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class DiskUsageChangeNode(BaseModel):
+    free_end: int = Field(default=0, serialization_alias="freeEnd")
+    usage_end: int = Field(default=0, serialization_alias="usageEnd")
+    trash_end: int = Field(default=0, serialization_alias="trashEnd")
+    free_change: int = Field(default=0, serialization_alias="freeChange")
+    usage_change: int = Field(default=0, serialization_alias="usageChange")
+    trash_change: int = Field(default=0, serialization_alias="trashChange")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class DiskUsageChangeResponse(BaseModel):
+    current_period: str = Field(serialization_alias="currentPeriod")
+    reference_period: str = Field(serialization_alias="referencePeriod")
+    nodes: dict[str, DiskUsageChangeNode] = Field(default_factory=dict)
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class SatelliteUsageFilters(BaseModel):

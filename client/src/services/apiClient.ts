@@ -11,6 +11,9 @@ import type {
   TransferActualData,
   TransferActualMetrics,
   TransferActualSatelliteMetrics,
+  TransferTotalsNode,
+  TransferTotalsResponse,
+  DiskUsageChangeResponse,
 } from "../types";
 
 const DEFAULT_API_BASE_URL = import.meta.env.DEV ? "http://localhost:8000/api" : "/api";
@@ -240,4 +243,84 @@ export const fetchPayoutPaystubs = async (nodes: string[]): Promise<PaystubPerio
 export const fetchIntervalTransfers = async (nodes: string[], intervalLength: string, numberOfIntervals: number) => {
   const response = await apiClient.post("/transfer-grouped/intervals", { nodes, intervalLength, numberOfIntervals });
   return response.data;
+};
+
+export const fetchTransferTotals = async (nodes: string[], interval: string): Promise<TransferTotalsResponse> => {
+  const response = await apiClient.post("/transfer-grouped/totals", { nodes, interval });
+  const raw = response.data;
+
+  const totals: Record<string, TransferTotalsNode> = {};
+  const rawTotals = raw && typeof raw === "object" ? (raw as Record<string, unknown>).totals : undefined;
+  if (rawTotals && typeof rawTotals === "object") {
+    for (const [node, entry] of Object.entries(rawTotals as Record<string, unknown>)) {
+      if (!entry || typeof entry !== "object") {
+        continue;
+      }
+
+      const record = entry as Record<string, unknown>;
+      totals[node] = {
+        sizeDlSuccNor: toNumeric(record.sizeDlSuccNor ?? record.size_dl_succ_nor),
+        sizeUlSuccNor: toNumeric(record.sizeUlSuccNor ?? record.size_ul_succ_nor),
+        sizeDlFailNor: toNumeric(record.sizeDlFailNor ?? record.size_dl_fail_nor),
+        sizeUlFailNor: toNumeric(record.sizeUlFailNor ?? record.size_ul_fail_nor),
+        sizeDlSuccRep: toNumeric(record.sizeDlSuccRep ?? record.size_dl_succ_rep),
+        sizeUlSuccRep: toNumeric(record.sizeUlSuccRep ?? record.size_ul_succ_rep),
+        sizeDlFailRep: toNumeric(record.sizeDlFailRep ?? record.size_dl_fail_rep),
+        sizeUlFailRep: toNumeric(record.sizeUlFailRep ?? record.size_ul_fail_rep),
+        countDlSuccNor: toNumeric(record.countDlSuccNor ?? record.count_dl_succ_nor),
+        countUlSuccNor: toNumeric(record.countUlSuccNor ?? record.count_ul_succ_nor),
+        countDlFailNor: toNumeric(record.countDlFailNor ?? record.count_dl_fail_nor),
+        countUlFailNor: toNumeric(record.countUlFailNor ?? record.count_ul_fail_nor),
+        countDlSuccRep: toNumeric(record.countDlSuccRep ?? record.count_dl_succ_rep),
+        countUlSuccRep: toNumeric(record.countUlSuccRep ?? record.count_ul_succ_rep),
+        countDlFailRep: toNumeric(record.countDlFailRep ?? record.count_dl_fail_rep),
+        countUlFailRep: toNumeric(record.countUlFailRep ?? record.count_ul_fail_rep),
+      };
+    }
+  }
+
+  const intervalSeconds = toNumeric((raw ?? {}) && typeof raw === "object" ? (raw as Record<string, unknown>).intervalSeconds ?? (raw as Record<string, unknown>).interval_seconds : 0);
+
+  return {
+    intervalSeconds,
+    totals,
+  };
+};
+
+export const fetchDiskUsageChange = async (
+  nodes: string[],
+  intervalDays: number,
+): Promise<DiskUsageChangeResponse> => {
+  const response = await apiClient.post("/diskusage/usage-change", { nodes, intervalDays });
+  const raw = response.data ?? {};
+
+  const currentPeriod = String((raw as Record<string, unknown>).currentPeriod ?? (raw as Record<string, unknown>).current_period ?? "");
+  const referencePeriod = String((raw as Record<string, unknown>).referencePeriod ?? (raw as Record<string, unknown>).reference_period ?? "");
+
+  const nodesRaw = (raw as Record<string, unknown>).nodes;
+  const nodesMap: DiskUsageChangeResponse["nodes"] = {};
+
+  if (nodesRaw && typeof nodesRaw === "object") {
+    for (const [node, entry] of Object.entries(nodesRaw as Record<string, unknown>)) {
+      if (!entry || typeof entry !== "object") {
+        continue;
+      }
+
+      const record = entry as Record<string, unknown>;
+      nodesMap[node] = {
+        freeEnd: toNumeric(record.freeEnd ?? record.free_end),
+        usageEnd: toNumeric(record.usageEnd ?? record.usage_end),
+        trashEnd: toNumeric(record.trashEnd ?? record.trash_end),
+        freeChange: toNumeric(record.freeChange ?? record.free_change),
+        usageChange: toNumeric(record.usageChange ?? record.usage_change),
+        trashChange: toNumeric(record.trashChange ?? record.trash_change),
+      };
+    }
+  }
+
+  return {
+    currentPeriod,
+    referencePeriod,
+    nodes: nodesMap,
+  };
 };

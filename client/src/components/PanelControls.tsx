@@ -1,12 +1,8 @@
-import type { ComponentProps, FC, ReactElement } from "react";
-
-import PanelControlsButton from "./PanelControlsButton";
-
-type PanelControlsButtonElement = ReactElement<ComponentProps<typeof PanelControlsButton>>;
+import type { FC, ReactNode } from "react";
 
 interface PanelControlsProps {
   ariaLabel: string;
-  buttons: PanelControlsButtonElement[];
+  buttons: ReactNode[];
 }
 
 const PanelControls: FC<PanelControlsProps> = ({ ariaLabel, buttons }) => (

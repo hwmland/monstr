@@ -11,10 +11,8 @@ from ...schemas import TransferGroupedFilters, TransferGroupedRead
 from ...schemas import DataDistributionRequest, DataDistributionResponse, DataDistributionItem
 from ...schemas import IntervalTransferResponse, IntervalTransferBucket
 from datetime import datetime, timezone, timedelta
-from ...models import TransferGrouped
 from sqlalchemy import select, func
-from ...repositories.transfers import TransferRepository
-from ...schemas import IntervalTransfersRequest
+from ...schemas import IntervalTransfersRequest, TransferTotalsRequest, TransferTotalsResponse, TransferTotalsNode
 
 router = APIRouter(prefix="/api/transfer-grouped", tags=["transfer-grouped"])
 
@@ -109,7 +107,7 @@ async def data_distribution(
 
 
 def parse_interval_length(spec: str) -> timedelta:
-    """Parse interval length strings like '10s', '2m', '10m', '1h' into timedelta."""
+    """Parse interval length strings like '10s', '2m', '10m', '1h', '1d' into timedelta."""
     spec = spec.strip().lower()
     if spec.endswith('s'):
         return timedelta(seconds=int(spec[:-1]))
@@ -117,6 +115,8 @@ def parse_interval_length(spec: str) -> timedelta:
         return timedelta(minutes=int(spec[:-1]))
     if spec.endswith('h'):
         return timedelta(hours=int(spec[:-1]))
+    if spec.endswith('d'):
+        return timedelta(days=int(spec[:-1]))
     # fallback: try integer seconds
     return timedelta(seconds=int(spec))
 
@@ -133,6 +133,59 @@ def round_down_to_interval(dt: datetime, interval: timedelta) -> datetime:
     interval_seconds = int(interval.total_seconds())
     bucket_start_ts = (total_seconds // interval_seconds) * interval_seconds
     return datetime.fromtimestamp(bucket_start_ts, tz=timezone.utc)
+
+
+@router.post("/totals", response_model=TransferTotalsResponse)
+async def transfer_totals(
+    payload: TransferTotalsRequest,
+    session: AsyncSession = Depends(get_session),
+) -> TransferTotalsResponse:
+    interval_delta = parse_interval_length(payload.interval)
+    now = datetime.now(timezone.utc)
+    start = now - interval_delta
+
+    repository = TransferGroupedRepository(session)
+    rows = await repository.collect_interval_rows(payload.nodes or None, start, now)
+
+    metric_fields = (
+        "size_dl_succ_nor",
+        "size_ul_succ_nor",
+        "size_dl_fail_nor",
+        "size_ul_fail_nor",
+        "size_dl_succ_rep",
+        "size_ul_succ_rep",
+        "size_dl_fail_rep",
+        "size_ul_fail_rep",
+        "count_dl_succ_nor",
+        "count_ul_succ_nor",
+        "count_dl_fail_nor",
+        "count_ul_fail_nor",
+        "count_dl_succ_rep",
+        "count_ul_succ_rep",
+        "count_dl_fail_rep",
+        "count_ul_fail_rep",
+    )
+
+    totals: dict[str, dict[str, int]] = {}
+
+    for row in rows:
+        node = row.source or ""
+        if node not in totals:
+            totals[node] = {field: 0 for field in metric_fields}
+        node_totals = totals[node]
+        for field in metric_fields:
+            node_totals[field] += int(getattr(row, field, 0) or 0)
+
+    response_totals = {
+        node: TransferTotalsNode(**values)
+        for node, values in totals.items()
+        if node
+    }
+
+    return TransferTotalsResponse(
+        interval_seconds=int(interval_delta.total_seconds()),
+        totals=response_totals,
+    )
 
 
 @router.post("/intervals", response_model=IntervalTransferResponse)
@@ -158,91 +211,7 @@ async def interval_transfers(
 
     repository = TransferGroupedRepository(session)
 
-    # Decide which pre-aggregated granularities to use based on requested interval
-    interval_seconds = int(interval.total_seconds())
-
-    # Read granularity=5 records with interval_start >= rounded_start only if interval >= 5 minutes
-    gran5_rows: list[TransferGrouped] = []
-    gran5_end: datetime | None = None
-    if interval_seconds >= 300:  # 5 minutes
-        gran5_rows = await repository.list_for_sources_between(payload.nodes or None, rounded_start, now, granularity=5)
-        # Find maximum interval_end among granularity=5 rows
-        for r in gran5_rows:
-            if gran5_end is None or r.interval_end > gran5_end:
-                gran5_end = r.interval_end
-
-    if gran5_end is None:
-        gran5_end = rounded_start
-
-    if gran5_end.tzinfo is None:
-        gran5_end = gran5_end.replace(tzinfo=timezone.utc)
-    else:
-        gran5_end = gran5_end.astimezone(timezone.utc)
-
-    # Read granularity=1 records with interval_start >= gran5_end only if interval >= 1 minute
-    gran1_rows: list[TransferGrouped] = []
-    gran1_end: datetime | None = None
-    if interval_seconds >= 60:  # 1 minute
-        gran1_rows = await repository.list_for_sources_between(payload.nodes or None, gran5_end, now, granularity=1)
-        # Find maximum interval_end among granularity=1 rows (if any)
-        for r in gran1_rows:
-            if gran1_end is None or r.interval_end > gran1_end:
-                gran1_end = r.interval_end
-
-    if gran1_end is None:
-        gran1_end = gran5_end
-
-    if gran1_end.tzinfo is None:
-        gran1_end = gran1_end.replace(tzinfo=timezone.utc)
-    else:
-        gran1_end = gran1_end.astimezone(timezone.utc)
-
-    # Read raw Transfer rows from gran1_end up to now to capture most recent activity
-    transfer_repo = TransferRepository(session)
-    transfers_since_gran1 = await transfer_repo.list_for_sources_between(payload.nodes or None, gran1_end, now)
-
-    # Convert Transfer rows into TransferGrouped-like dict objects with same counters
-    converted_from_transfers: list[TransferGrouped] = []
-    for tr in transfers_since_gran1:
-        mode = 'succ' if tr.is_success else 'fail'
-        repair = 'rep' if tr.is_repair else 'nor'
-
-        tg = TransferGrouped(
-            source=tr.source,
-            satellite_id=tr.satellite_id,
-            interval_start=tr.timestamp,
-            interval_end=tr.timestamp,
-            size_class="",
-            granularity=1,
-            size_dl_succ_nor=0,
-            size_ul_succ_nor=0,
-            size_dl_fail_nor=0,
-            size_ul_fail_nor=0,
-            size_dl_succ_rep=0,
-            size_ul_succ_rep=0,
-            size_dl_fail_rep=0,
-            size_ul_fail_rep=0,
-            count_dl_succ_nor=0,
-            count_ul_succ_nor=0,
-            count_dl_fail_nor=0,
-            count_ul_fail_nor=0,
-            count_dl_succ_rep=0,
-            count_ul_succ_rep=0,
-            count_dl_fail_rep=0,
-            count_ul_fail_rep=0,
-        )
-
-        if tr.action == 'DL':
-            setattr(tg, f"size_dl_{mode}_{repair}", tr.size)
-            setattr(tg, f"count_dl_{mode}_{repair}", 1)
-        else:
-            setattr(tg, f"size_ul_{mode}_{repair}", tr.size)
-            setattr(tg, f"count_ul_{mode}_{repair}", 1)
-
-        converted_from_transfers.append(tg)
-
-    # Combine both grouped lists and converted transfer-derived rows
-    all_rows = list(gran5_rows) + list(gran1_rows) + converted_from_transfers
+    all_rows = await repository.collect_interval_rows(payload.nodes or None, rounded_start, now)
 
     # Prepare buckets (start from rounded_start up to now), bucket boundaries are interval-sized
     buckets: dict[datetime, dict[str, int]] = {}

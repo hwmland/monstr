@@ -171,6 +171,26 @@ def _migrate_5_to_6(conn: Connection) -> None:
     logger.info("Completed migration 5 -> 6")
 
 
+def _migrate_6_to_7(conn: Connection) -> None:
+    """Add indexes on transfer_grouped.interval_end and transfer_grouped.granularity."""
+    logger.info("Starting migration 6 -> 7: add indexes on transfer_grouped.interval_end and granularity")
+
+    inspector = inspect(conn)
+    table_name = models.TransferGrouped.__table__.name
+    if not inspector.has_table(table_name):
+        logger.info("Skipping index creation: table %s does not exist", table_name)
+        return
+
+    # deterministic index names
+    index_interval_end = f"ix_{table_name}_interval_end"
+    index_granularity = f"ix_{table_name}_granularity"
+
+    conn.execute(text(f'CREATE INDEX IF NOT EXISTS "{index_interval_end}" ON "{table_name}" ("interval_end")'))
+    conn.execute(text(f'CREATE INDEX IF NOT EXISTS "{index_granularity}" ON "{table_name}" ("granularity")'))
+
+    logger.info("Completed migration 6 -> 7")
+
+
 
 MigrationFunc = type(_migrate_0_to_1)
 
@@ -181,6 +201,7 @@ MIGRATIONS = (
     _migrate_3_to_4,
     _migrate_4_to_5,
     _migrate_5_to_6,
+    _migrate_6_to_7,
 )
 LATEST_SCHEMA_VERSION = len(MIGRATIONS)
 
