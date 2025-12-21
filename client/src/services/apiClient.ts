@@ -37,10 +37,36 @@ export const fetchNodes = async (): Promise<NodeInfo[]> => {
     throw new Error("Unexpected nodes response format");
   }
 
-  return items.map((item: Record<string, unknown>) => ({
-    name: String(item.name ?? ""),
-    path: String(item.path ?? ""),
-  }));
+  return items.map((item: Record<string, unknown>) => {
+    const name = String(item.name ?? "");
+    const path = String(item.path ?? "");
+    const rawNodeapi = item.nodeapi;
+    const nodeapiValue = typeof rawNodeapi === "string" && rawNodeapi.trim().length > 0
+      ? rawNodeapi
+      : undefined;
+
+    const vettingSource = (item as Record<string, unknown>).vetting ?? (item as Record<string, unknown>).vetting_date;
+    let vetting: Record<string, string | null> | undefined;
+    if (vettingSource && typeof vettingSource === "object" && !Array.isArray(vettingSource)) {
+      const normalized: Record<string, string | null> = {};
+      for (const [satelliteId, value] of Object.entries(vettingSource as Record<string, unknown>)) {
+        if (!satelliteId) {
+          continue;
+        }
+        normalized[satelliteId] = value == null ? null : String(value);
+      }
+      if (Object.keys(normalized).length > 0) {
+        vetting = normalized;
+      }
+    }
+
+    return {
+      name,
+      path,
+      nodeapi: nodeapiValue,
+      vetting,
+    } satisfies NodeInfo;
+  });
 };
 
 export const fetchReputationsPanel = async (nodes: string[]): Promise<NodeReputation[]> => {

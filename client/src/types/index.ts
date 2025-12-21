@@ -1,6 +1,8 @@
 export interface NodeInfo {
   name: string;
   path: string;
+  nodeapi?: string;
+  vetting?: Record<string, string | null>;
 }
 
 export interface SatelliteReputation {

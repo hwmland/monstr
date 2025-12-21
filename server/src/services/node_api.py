@@ -63,6 +63,8 @@ class NodeData:
     total_held_amount: Optional[float] = None
     # Timestamp of the last successful held-history fetch
     last_held_history_at: Optional[datetime] = None
+    # Optional mapping of satellite id -> vettedAt timestamp (or None)
+    vetting_date: Optional[dict[str, Optional[datetime]]] = None
 
 
 @dataclass
@@ -644,12 +646,26 @@ class NodeApiService:
         # Attempt to extract satellite identifiers from a mapping or a list
         sat_ids: list[str] = []
         satellites_payload = payload.get("satellites")
+        vetting_map: dict[str, Optional[datetime]] = {}
         if isinstance(satellites_payload, list):
             for item in satellites_payload:
                 if isinstance(item, dict):
                     sid = item.get("id")
                     if isinstance(sid, str):
                         sat_ids.append(sid)
+                        # parse vettedAt which may be null
+                        vetted_val = item.get("vettedAt")
+                        if vetted_val is None:
+                            vetting_map[sid] = None
+                        else:
+                            try:
+                                ts = str(vetted_val)
+                                if ts.endswith("Z"):
+                                    ts = ts[:-1] + "+00:00"
+                                vet_dt = datetime.fromisoformat(ts)
+                                vetting_map[sid] = vet_dt
+                            except Exception:
+                                vetting_map[sid] = None
 
         if sat_ids:
             # Determine which satellite ids we actually need to query while
@@ -660,6 +676,12 @@ class NodeApiService:
                 existing_ids = set(existing_info.keys())
                 for sid in sat_ids:
                     existing_info.setdefault(sid, SatelliteInfo())
+                # Ensure vetting_date mapping exists and update entries
+                if state.data.vetting_date is None:
+                    state.data.vetting_date = {}
+                for sid in sat_ids:
+                    if sid in vetting_map:
+                        state.data.vetting_date[sid] = vetting_map[sid]
             to_query = [sid for sid in sat_ids if sid not in existing_ids]
 
             if to_query:
@@ -683,9 +705,6 @@ class NodeApiService:
                             info = state.runtime.satellites.setdefault(sid, SatelliteInfo())
                             info.held_amount = amount
                         # Compute total across known satellites (ignore None).
-                        # If there are no numeric values, leave as None to
-                        # indicate unknown; otherwise store the numeric sum
-                        # (0.0 is a valid total and should be preserved).
                         total = 0.0
                         numeric_count = 0
                         for info in state.runtime.satellites.values():
@@ -696,9 +715,11 @@ class NodeApiService:
                                 total += float(value)
                                 numeric_count += 1
                             except Exception:
-                                # Skip non-convertible values
                                 continue
                         state.data.total_held_amount = total if numeric_count > 0 else None
+                        # Ensure vetting_date mapping exists
+                        if state.data.vetting_date is None:
+                            state.data.vetting_date = {}
 
         # Process disk usage snapshot regardless of presence of satellite ids
         disk_payload = payload.get("diskSpace")

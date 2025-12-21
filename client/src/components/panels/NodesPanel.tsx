@@ -1,16 +1,79 @@
-import type { FC } from "react";
+import { useState, type FC, type MouseEvent } from "react";
+import { createPortal } from "react-dom";
 
 import Settings from "../Settings";
 
 import useNodes from "../../hooks/useNodes";
 import useSelectedNodesStore from "../../store/useSelectedNodes";
+import { SATELLITE_ID_TO_NAME } from "../../constants/satellites";
+import type { NodeInfo } from "../../types";
+
+type DisplayNode = NodeInfo & { isAggregate?: boolean };
+
+type VettingEntry = {
+  id: string;
+  label: string;
+  isVetted: boolean;
+  value: string | null;
+};
+
+const VETTING_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "short",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+const sanitizeForId = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "node";
+
+const formatVettingDate = (value: string): string => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return VETTING_DATE_FORMATTER.format(parsed);
+};
+
+const getVettingEntries = (vetting?: Record<string, string | null>): VettingEntry[] => {
+  if (!vetting) {
+    return [];
+  }
+
+  return Object.entries(vetting)
+    .filter(([satelliteId]) => Boolean(satelliteId))
+    .map(([satelliteId, timestamp]) => {
+      const label = SATELLITE_ID_TO_NAME[satelliteId] ?? satelliteId;
+      if (!timestamp) {
+        return { id: satelliteId, label, isVetted: false, value: null };
+      }
+
+      return {
+        id: satelliteId,
+        label,
+        isVetted: true,
+        value: formatVettingDate(timestamp),
+      };
+    })
+    .sort((a, b) => a.label.localeCompare(b.label));
+};
 
 const NodesPanel: FC = () => {
   const { nodes, isLoading, error, refresh } = useNodes();
   const { toggleNode, isSelected } = useSelectedNodesStore();
+  const [suppressedTooltipNode, setSuppressedTooltipNode] = useState<string | null>(null);
+  const [tooltipAnchor, setTooltipAnchor] = useState<DOMRect | null>(null);
+  const [activeTooltipId, setActiveTooltipId] = useState<string | null>(null);
 
   const availableNodeNames = nodes.map((node) => node.name);
-  const displayNodes = [{ name: "All" }, ...nodes];
+  const displayNodes: DisplayNode[] = [
+    { name: "All", path: "", isAggregate: true },
+    ...nodes.map((node) => ({ ...node, isAggregate: false })),
+  ];
 
   const handleSelection = (name: string) => {
     toggleNode(name, availableNodeNames);
@@ -40,22 +103,119 @@ const NodesPanel: FC = () => {
         <div className="nodes-grid">
           {displayNodes.map((node) => {
             const selected = isSelected(node.name);
+            const vettingEntries = node.isAggregate ? [] : getVettingEntries(node.vetting);
+            const hasVetting = vettingEntries.length > 0;
+            const hasUnvetted = vettingEntries.some((entry) => !entry.isVetted);
+            const showVettingBar = hasVetting && hasUnvetted;
+            const tooltipHidden = suppressedTooltipNode === node.name;
+            const tooltipId = hasVetting ? `node-vetting-${sanitizeForId(node.name)}` : undefined;
+            const cardClass = [
+              "node-card",
+              selected ? "node-card--selected" : "",
+              hasVetting ? "node-card--has-vetting" : "",
+            ]
+              .filter(Boolean)
+              .join(" ");
+
+            const handleClick = (event: MouseEvent<HTMLElement>) => {
+              handleSelection(node.name);
+              if (event.detail > 0) {
+                (event.currentTarget as HTMLElement).blur();
+                setSuppressedTooltipNode(node.name);
+                setActiveTooltipId(null);
+              }
+            };
+
+            const handleMouseEnter = (event: MouseEvent<HTMLElement>) => {
+              if (!hasVetting || tooltipHidden) {
+                return;
+              }
+              const rect = event.currentTarget.getBoundingClientRect();
+              setTooltipAnchor(rect);
+              setActiveTooltipId(tooltipId ?? null);
+            };
+
             return (
               <article
                 key={node.name}
-                className={`node-card${selected ? " node-card--selected" : ""}`}
-                onClick={() => handleSelection(node.name)}
+                className={cardClass}
+                onClick={handleClick}
+                onMouseEnter={handleMouseEnter}
                 role="button"
                 tabIndex={0}
                 aria-pressed={selected}
+                aria-describedby={tooltipId}
+                onFocus={() => {
+                  setSuppressedTooltipNode((prev) => (prev === node.name ? null : prev));
+                  setTooltipAnchor(null);
+                  setActiveTooltipId(null);
+                }}
+                onMouseLeave={() => {
+                  setSuppressedTooltipNode((prev) => (prev === node.name ? null : prev));
+                  setTooltipAnchor(null);
+                  setActiveTooltipId(null);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === " " || event.key === "Enter") {
                     event.preventDefault();
                     handleSelection(node.name);
+                    setTooltipAnchor(null);
+                    setActiveTooltipId(null);
                   }
                 }}
               >
-                <span className="node-card__name">{node.name}</span>
+                <div className="node-card__label">
+                  <span className="node-card__name">{node.name}</span>
+                  {showVettingBar ? (
+                    <div className="node-card__vetting-bar" aria-hidden="true">
+                      {vettingEntries.map((entry) => (
+                        <span
+                          key={`${entry.id}-segment`}
+                          className={`node-card__vetting-bar-segment${
+                            entry.isVetted
+                              ? " node-card__vetting-bar-segment--ok"
+                              : " node-card__vetting-bar-segment--pending"
+                          }`}
+                          title={`${entry.label}: ${entry.isVetted ? "Vetted" : "Not vetted"}`}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                {hasVetting && tooltipId === activeTooltipId && tooltipAnchor
+                  ? createPortal(
+                      <div
+                        className="node-card__vetting-tooltip"
+                        id={tooltipId}
+                        role="note"
+                        style={{
+                          position: "fixed",
+                          top: `${tooltipAnchor.bottom + 8}px`,
+                          left: `${tooltipAnchor.left + tooltipAnchor.width / 2}px`,
+                          transform: "translate(-50%, 0)",
+                        }}
+                      >
+                        <p className="node-card__vetting-title">Vetting status</p>
+                        <ul className="node-card__vetting-list">
+                          {vettingEntries.map((entry) => (
+                            <li key={entry.id} className="node-card__vetting-row">
+                              <span className="node-card__vetting-satellite">{entry.label}</span>
+                              <span
+                                className={`node-card__vetting-status${
+                                  entry.isVetted && entry.value
+                                    ? ""
+                                    : " node-card__vetting-status--pending"
+                                }`}
+                              >
+                                {entry.isVetted && entry.value ? entry.value : "Not vetted"}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>,
+                      document.body,
+                    )
+                  : null}
               </article>
             );
           })}
