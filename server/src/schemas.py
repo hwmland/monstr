@@ -248,6 +248,10 @@ class NodeConfig(BaseModel):
     name: str = Field(..., description="Node identifier configured in settings")
     path: str = Field(..., description="Absolute path to the node log file")
     nodeapi: Optional[str] = Field(default=None, description="Optional HTTP(S) node API endpoint (nodeapi)")
+    vetting: Optional[dict[str, Optional[datetime]]] = Field(
+        default=None,
+        description="Mapping of satellite ids to their vettedAt timestamp (if known)",
+    )
 
 
 class DataDistributionRequest(BaseModel):

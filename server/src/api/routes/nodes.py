@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Request
 
 from ...config import Settings
 from ...schemas import NodeConfig
+from ...services.node_api import NodeApiService, NodeData
 
 router = APIRouter(prefix="/api/nodes", tags=["nodes"])
 
@@ -15,19 +16,45 @@ def get_settings(request: Request) -> Settings:
     return Settings()
 
 
+def _get_nodeapi_service(request: Request) -> NodeApiService | None:
+    svc = getattr(request.app.state, "nodeapi_service", None) or getattr(
+        request.app.state,
+        "node_api_service",
+        None,
+    )
+    if isinstance(svc, NodeApiService):
+        return svc
+    return None
+
+
 @router.get("", response_model=list[NodeConfig])
-async def list_nodes(settings: Settings = Depends(get_settings)) -> list[NodeConfig]:
+async def list_nodes(request: Request, settings: Settings = Depends(get_settings)) -> list[NodeConfig]:
     """Return the configured log nodes with their resolved log paths."""
     try:
         sources = settings.parsed_sources
     except ValueError:
         return []
 
+    nodeapi_service = _get_nodeapi_service(request)
+    node_data_map: dict[str, NodeData] = {}
+    if nodeapi_service is not None:
+        try:
+            node_data_map = await nodeapi_service.get_node_data([src.name for src in sources] or None)
+        except Exception:
+            node_data_map = {}
+
     nodes: list[NodeConfig] = []
     for source in sources:
+        node_state = node_data_map.get(source.name) if node_data_map else None
+        vetting = None
+        if node_state is not None:
+            state_vetting = getattr(node_state, "vetting_date", None)
+            if state_vetting:
+                vetting = dict(state_vetting)
+
         if source.kind == "file" and source.path is not None:
             nodes.append(
-                NodeConfig(name=source.name, path=str(source.path), nodeapi=source.nodeapi)
+                NodeConfig(name=source.name, path=str(source.path), nodeapi=source.nodeapi, vetting=vetting)
             )
             continue
 
@@ -37,6 +64,7 @@ async def list_nodes(settings: Settings = Depends(get_settings)) -> list[NodeCon
                     name=source.name,
                     path=f"tcp://{source.host}:{source.port}",
                     nodeapi=source.nodeapi,
+                    vetting=vetting,
                 )
             )
 
