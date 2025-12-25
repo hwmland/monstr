@@ -48,18 +48,15 @@ class DiskUsageRepository:
         result = await self.session.execute(stmt)
         return [row[0] for row in result.fetchall()]
 
-    async def list_for_periods(
+    async def list_between_periods(
         self,
-        periods: Iterable[str],
+        start_period: str,
+        end_period: str,
         sources: Optional[Sequence[str]] = None,
     ) -> List[DiskUsage]:
-        """Return all disk usage records matching the supplied periods and optional sources."""
+        """Return records whose period is between the provided bounds (inclusive)."""
 
-        period_list = list(periods)
-        if not period_list:
-            return []
-
-        stmt = select(DiskUsage).where(DiskUsage.period.in_(period_list))
+        stmt = select(DiskUsage).where(DiskUsage.period >= start_period, DiskUsage.period <= end_period)
         if sources:
             stmt = stmt.where(DiskUsage.source.in_(sources))
 

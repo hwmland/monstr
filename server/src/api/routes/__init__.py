@@ -12,6 +12,7 @@ from . import (
 	paystubs,
 	diskusage,
 	satelliteusage,
+	access_logs,
 )
 
 
@@ -29,4 +30,5 @@ __all__ = [
 	"paystubs",
 	"diskusage",
 	"satelliteusage",
+	"access_logs",
 ]

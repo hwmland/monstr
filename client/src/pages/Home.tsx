@@ -7,6 +7,7 @@ import SatelliteTrafficPanel from "../components/panels/SatelliteTrafficPanel";
 import DataSizeDistributionPanel from "../components/panels/DataSizeDistributionPanel";
 import HourlyTrafficPanel from "../components/panels/HourlyTrafficPanel";
 import AccumulatedTrafficPanel from "../components/panels/AccumulatedTrafficPanel";
+import DiskUsagePanel from "../components/panels/DiskUsagePanel";
 import useTransfersActual from "../hooks/useActualPerformancePanel";
 import usePanelVisibilityStore from "../store/usePanelVisibility";
 
@@ -19,6 +20,7 @@ const HomePage = () => {
   const showDataSizeDistribution = isVisible("dataDistribution");
   const showAccumulatedTraffic = isVisible("accumulatedTraffic");
   const showLongTerm = isVisible("longTerm");
+  const showDiskUsage = isVisible("diskUsage");
   const shouldLoadTransfers = showSatelliteTraffic || showActualPerformance;
   const shouldRenderTransfers = showSatelliteTraffic || showActualPerformance || showHourlyTraffic;
 
@@ -30,6 +32,7 @@ const HomePage = () => {
     <div className="page">
       <NodesPanel />
       {showLongTerm ? <LongTermPanel /> : null}
+      {showDiskUsage ? <DiskUsagePanel selectedNodes={selectedNodes} /> : null}
       {showNodeCompare ? <NodeComparePanel selectedNodes={selectedNodes} /> : null}
       {shouldRenderTransfers ? (
         <>

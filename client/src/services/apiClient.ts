@@ -14,6 +14,9 @@ import type {
   TransferTotalsNode,
   TransferTotalsResponse,
   DiskUsageChangeResponse,
+  DiskUsageUsageMode,
+  DiskUsageUsageNode,
+  DiskUsageUsageResponse,
 } from "../types";
 
 const DEFAULT_API_BASE_URL = import.meta.env.DEV ? "http://localhost:8000/api" : "/api";
@@ -349,4 +352,43 @@ export const fetchDiskUsageChange = async (
     referencePeriod,
     nodes: nodesMap,
   };
+};
+
+export const fetchDiskUsageUsage = async (
+  nodes: string[],
+  intervalDays: number,
+  mode: DiskUsageUsageMode,
+): Promise<DiskUsageUsageResponse> => {
+  const response = await apiClient.post("/diskusage/usage", { nodes, intervalDays, mode });
+  const raw = response.data ?? {};
+
+  const periods: DiskUsageUsageResponse["periods"] = {};
+  const periodEntries = (raw as Record<string, unknown>).periods;
+
+  if (periodEntries && typeof periodEntries === "object") {
+    for (const [period, periodValue] of Object.entries(periodEntries as Record<string, unknown>)) {
+      if (!periodValue || typeof periodValue !== "object") {
+        continue;
+      }
+
+      const nodesMap: Record<string, DiskUsageUsageNode> = {};
+      for (const [nodeName, nodeValue] of Object.entries(periodValue as Record<string, unknown>)) {
+        if (!nodeValue || typeof nodeValue !== "object") {
+          continue;
+        }
+
+        const metrics = nodeValue as Record<string, unknown>;
+        nodesMap[nodeName] = {
+          capacity: toNumeric(metrics.capacity),
+          usage: toNumeric(metrics.usage),
+          trash: toNumeric(metrics.trash),
+          at: String(metrics.at ?? ""),
+        };
+      }
+
+      periods[period] = nodesMap;
+    }
+  }
+
+  return { periods };
 };

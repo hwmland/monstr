@@ -8,6 +8,9 @@ declare module "recharts" {
   export const Pie: ComponentType<any>;
   export const LineChart: ComponentType<any>;
   export const Line: ComponentType<any>;
+  export const AreaChart: ComponentType<any>;
+  export const Area: ComponentType<any>;
+  export const ComposedChart: ComponentType<any>;
   export const CartesianGrid: ComponentType<any>;
   export const XAxis: ComponentType<any>;
   export const YAxis: ComponentType<any>;

@@ -14,9 +14,25 @@ from ...schemas import (
     DiskUsageChangeResponse,
     DiskUsageFilters,
     DiskUsageRead,
+    DiskUsageUsageNode,
+    DiskUsageUsageRequest,
+    DiskUsageUsageResponse,
 )
 
 router = APIRouter(prefix="/api/diskusage", tags=["diskusage"])
+
+
+def _period_str_to_datetime(period: str) -> datetime:
+    try:
+        dt = datetime.fromisoformat(period)
+    except ValueError:
+        try:
+            dt = datetime.strptime(period, "%Y-%m")
+        except ValueError:
+            dt = datetime.strptime(period, "%Y-%m-%d")
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 @router.get("", response_model=List[DiskUsageRead], tags=["raw"])
@@ -95,3 +111,51 @@ async def usage_change(
         reference_period=reference_period,
         nodes=nodes_result,
     )
+
+
+@router.post("/usage", response_model=DiskUsageUsageResponse)
+async def usage(
+    payload: DiskUsageUsageRequest,
+    session: AsyncSession = Depends(get_session),
+) -> DiskUsageUsageResponse:
+    """Return per-period disk usage metrics for the requested nodes and window."""
+
+    now_date = datetime.now(timezone.utc).date()
+    start_period = (now_date - timedelta(days=payload.interval_days)).isoformat()
+    end_period = now_date.isoformat()
+    nodes_filter = list(dict.fromkeys(payload.nodes)) if payload.nodes else None
+
+    repository = DiskUsageRepository(session)
+    records = await repository.list_between_periods(start_period, end_period, nodes_filter)
+
+    periods_map: Dict[str, Dict[str, DiskUsageUsageNode]] = {}
+
+    for record in records:
+        # Determine metrics based on the requested mode.
+        if payload.mode == "maxUsage":
+            usage_value = record.max_usage
+            trash_value = record.trash_at_max_usage
+            at_value = record.max_usage_at
+        elif payload.mode == "maxTrash":
+            usage_value = record.usage_at_max_trash
+            trash_value = record.max_trash
+            at_value = record.max_trash_at
+        else:  # "end"
+            usage_value = record.usage_end
+            trash_value = record.trash_end
+            at_value = _period_str_to_datetime(record.period)
+
+        if at_value.tzinfo is None:
+            at_value = at_value.replace(tzinfo=timezone.utc)
+
+        node_metrics = DiskUsageUsageNode(
+            capacity=record.free_end,
+            usage=usage_value,
+            trash=trash_value,
+            at=at_value,
+        )
+
+        period_bucket = periods_map.setdefault(record.period, {})
+        period_bucket[record.source] = node_metrics
+
+    return DiskUsageUsageResponse(periods=periods_map)
