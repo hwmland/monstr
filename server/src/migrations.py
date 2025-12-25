@@ -191,6 +191,13 @@ def _migrate_6_to_7(conn: Connection) -> None:
     logger.info("Completed migration 6 -> 7")
 
 
+def _migrate_7_to_8(conn: Connection) -> None:
+    """Create AccessLog table for API access tracking."""
+    logger.info("Starting migration 7 -> 8: create AccessLog table")
+    models.AccessLog.__table__.create(conn, checkfirst=True)
+    logger.info("Completed migration 7 -> 8")
+
+
 
 MigrationFunc = type(_migrate_0_to_1)
 
@@ -202,6 +209,7 @@ MIGRATIONS = (
     _migrate_4_to_5,
     _migrate_5_to_6,
     _migrate_6_to_7,
+    _migrate_7_to_8,
 )
 LATEST_SCHEMA_VERSION = len(MIGRATIONS)
 

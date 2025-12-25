@@ -133,3 +133,16 @@ export interface DiskUsageChangeResponse {
   referencePeriod: string;
   nodes: Record<string, DiskUsageChangeNode>;
 }
+
+export type DiskUsageUsageMode = "end" | "maxTrash" | "maxUsage";
+
+export interface DiskUsageUsageNode {
+  capacity: number;
+  usage: number;
+  trash: number;
+  at: string;
+}
+
+export interface DiskUsageUsageResponse {
+  periods: Record<string, Record<string, DiskUsageUsageNode>>;
+}

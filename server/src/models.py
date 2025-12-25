@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from sqlalchemy import JSON, Column, DateTime, Float, String, Boolean, Integer
@@ -318,4 +318,38 @@ class SatelliteUsage(SQLModel, table=True):
         default=None,
         sa_column=Column("DiskUsage", Integer, nullable=True),
         description="Disk usage bytes recorded at the end of the period",
+    )
+
+
+class AccessLog(SQLModel, table=True):
+    """Tracks incoming API access metadata for audit purposes."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    timestamp: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), nullable=False, index=True),
+        description="UTC timestamp when the request was received",
+    )
+    host: str = Field(
+        sa_column=Column(String(64), nullable=False, index=True),
+        description="Immediate client host as reported by FastAPI",
+    )
+    port: int = Field(
+        sa_column=Column(Integer, nullable=False),
+        description="Immediate client port",
+    )
+    fwd_for: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(64), nullable=True),
+        description="X-Forwarded-For header value if present",
+    )
+    real_ip: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(64), nullable=True),
+        description="X-Real-IP header value if present",
+    )
+    user_agent: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(1024), nullable=True),
+        description="User-Agent header",
     )

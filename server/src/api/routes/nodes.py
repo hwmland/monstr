@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...config import Settings
+from ...core.logging import get_logger
+from ...database import get_session
 from ...schemas import NodeConfig
 from ...services.node_api import NodeApiService, NodeData
+from ._access_log import extract_client_meta, persist_access_log
 
 router = APIRouter(prefix="/api/nodes", tags=["nodes"])
+logger = get_logger(__name__)
 
 
 def get_settings(request: Request) -> Settings:
@@ -28,12 +33,30 @@ def _get_nodeapi_service(request: Request) -> NodeApiService | None:
 
 
 @router.get("", response_model=list[NodeConfig])
-async def list_nodes(request: Request, settings: Settings = Depends(get_settings)) -> list[NodeConfig]:
+async def list_nodes(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> list[NodeConfig]:
     """Return the configured log nodes with their resolved log paths."""
     try:
         sources = settings.parsed_sources
     except ValueError:
         return []
+
+    client_host, client_port, forwarded_for, real_ip, user_agent = extract_client_meta(request)
+
+    try:
+        await persist_access_log(
+            session,
+            host=client_host,
+            port=client_port,
+            forwarded_for=forwarded_for,
+            real_ip=real_ip,
+            user_agent=user_agent,
+        )
+    except Exception:
+        logger.warning("Failed to persist access log entry", exc_info=True)
 
     nodeapi_service = _get_nodeapi_service(request)
     node_data_map: dict[str, NodeData] = {}

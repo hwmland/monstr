@@ -759,23 +759,23 @@ const NodeComparePanel: FC<NodeComparePanelProps> = ({ selectedNodes }) => {
         controls={(
           <>
             <PanelControls
-              ariaLabel="Interval"
-              buttons={INTERVAL_OPTIONS.map((opt) => (
-                <PanelControlsButton
-                  key={opt.id}
-                  active={interval === opt.id}
-                  onClick={() => setIntervalOption(opt.id)}
-                  content={opt.label}
-                />
-              ))}
-            />
-            <PanelControls
               ariaLabel="Display mode"
               buttons={MODE_OPTIONS.map((opt) => (
                 <PanelControlsButton
                   key={opt.id}
                   active={mode === opt.id}
                   onClick={() => setMode(opt.id)}
+                  content={opt.label}
+                />
+              ))}
+            />
+            <PanelControls
+              ariaLabel="Interval"
+              buttons={INTERVAL_OPTIONS.map((opt) => (
+                <PanelControlsButton
+                  key={opt.id}
+                  active={interval === opt.id}
+                  onClick={() => setIntervalOption(opt.id)}
                   content={opt.label}
                 />
               ))}

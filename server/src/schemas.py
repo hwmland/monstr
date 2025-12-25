@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -41,6 +41,18 @@ class LogEntryFilters(BaseModel):
         default=None, description="Filter by action within the subsystem"
     )
     limit: int = Field(default=100, ge=1, le=1000, description="Maximum number of records to return")
+
+
+class AccessLogRead(BaseModel):
+    id: int
+    timestamp: datetime
+    host: str
+    port: int
+    fwd_for: Optional[str] = Field(default=None, serialization_alias="fwdFor")
+    real_ip: Optional[str] = Field(default=None, serialization_alias="realIp")
+    user_agent: Optional[str] = Field(default=None, serialization_alias="userAgent")
+
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
 
 class ReputationCreate(BaseModel):
@@ -544,6 +556,44 @@ class DiskUsageChangeNode(BaseModel):
     free_change: int = Field(default=0, serialization_alias="freeChange")
     usage_change: int = Field(default=0, serialization_alias="usageChange")
     trash_change: int = Field(default=0, serialization_alias="trashChange")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class DiskUsageUsageRequest(BaseModel):
+    nodes: list[str] = Field(
+        default_factory=list,
+        description="Nodes to include; empty means all nodes.",
+    )
+    interval_days: int = Field(
+        default=7,
+        ge=0,
+        serialization_alias="intervalDays",
+        validation_alias="intervalDays",
+        description="Number of days back from today to include (inclusive).",
+    )
+    mode: Literal["end", "maxTrash", "maxUsage"] = Field(
+        default="end",
+        description="Select which snapshot fields to use for usage/trash values.",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class DiskUsageUsageNode(BaseModel):
+    capacity: int = Field(description="Reported free capacity value", serialization_alias="capacity")
+    usage: int = Field(description="Usage metric for the selected mode")
+    trash: int = Field(description="Trash metric for the selected mode")
+    at: datetime = Field(description="Timestamp representing when the metrics were captured")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class DiskUsageUsageResponse(BaseModel):
+    periods: dict[str, dict[str, DiskUsageUsageNode]] = Field(
+        default_factory=dict,
+        description="Mapping of periods to per-node usage metrics",
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 

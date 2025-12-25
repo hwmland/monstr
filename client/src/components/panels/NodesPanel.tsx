@@ -1,4 +1,4 @@
-import { useState, type FC, type MouseEvent } from "react";
+import { useEffect, useState, type FC, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 
 import Settings from "../Settings";
@@ -62,12 +62,26 @@ const getVettingEntries = (vetting?: Record<string, string | null>): VettingEntr
     .sort((a, b) => a.label.localeCompare(b.label));
 };
 
+const AUTO_REFRESH_INTERVAL_MS = 10 * 60 * 1000;
+
 const NodesPanel: FC = () => {
   const { nodes, isLoading, error, refresh } = useNodes();
   const { toggleNode, isSelected } = useSelectedNodesStore();
   const [suppressedTooltipNode, setSuppressedTooltipNode] = useState<string | null>(null);
   const [tooltipAnchor, setTooltipAnchor] = useState<DOMRect | null>(null);
   const [activeTooltipId, setActiveTooltipId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+    const timer = window.setInterval(() => {
+      void refresh();
+    }, AUTO_REFRESH_INTERVAL_MS);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [refresh]);
 
   const availableNodeNames = nodes.map((node) => node.name);
   const displayNodes: DisplayNode[] = [

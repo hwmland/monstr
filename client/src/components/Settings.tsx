@@ -85,18 +85,26 @@ const Settings: FC = () => {
                 <label className="settings__item">
                   <input
                     type="checkbox"
-                    checked={panels.nodeCompare ?? true}
-                    onChange={() => togglePanel("nodeCompare")}
-                  />
-                  <span>Node Compare</span>
-                </label>
-                <label className="settings__item">
-                  <input
-                    type="checkbox"
                     checked={panels.longTerm ?? false}
                     onChange={() => togglePanel("longTerm")}
                   />
                   <span>Long-Term View</span>
+                </label>
+                <label className="settings__item">
+                  <input
+                    type="checkbox"
+                    checked={panels.diskUsage ?? false}
+                    onChange={() => togglePanel("diskUsage")}
+                  />
+                  <span>Disk Usage</span>
+                </label>
+                <label className="settings__item">
+                  <input
+                    type="checkbox"
+                    checked={panels.nodeCompare ?? true}
+                    onChange={() => togglePanel("nodeCompare")}
+                  />
+                  <span>Node Compare</span>
                 </label>
                 <label className="settings__item">
                   <input
