@@ -630,3 +630,93 @@ class SatelliteUsageRead(BaseModel):
     disk_usage: Optional[int] = Field(default=None, serialization_alias="diskUsage")
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+# Dash / node-api passthrough schemas (mirrors dashstorj shared ApiTypes)
+class DashStorjSatellite(BaseModel):
+    id: str
+    url: str
+    disqualified: Optional[bool] = None
+    suspended: Optional[bool] = None
+
+
+class DashStorjDiskSpace(BaseModel):
+    used: float
+    available: float
+    trash: float
+    overused: float
+
+
+class DashStorjBandwidth(BaseModel):
+    used: float
+    available: float
+
+
+class DashStorjNodeStatus(BaseModel):
+    node_id: str = Field(serialization_alias="nodeID", validation_alias="nodeID")
+    wallet: str
+    wallet_features: Optional[list[str]] = Field(default=None, serialization_alias="walletFeatures", validation_alias="walletFeatures")
+    satellites: list[DashStorjSatellite] = Field(default_factory=list)
+    disk_space: DashStorjDiskSpace = Field(serialization_alias="diskSpace", validation_alias="diskSpace")
+    bandwidth: DashStorjBandwidth
+    last_pinged: datetime = Field(serialization_alias="lastPinged", validation_alias="lastPinged")
+    version: str
+    allowed_version: str = Field(serialization_alias="allowedVersion", validation_alias="allowedVersion")
+    up_to_date: bool = Field(serialization_alias="upToDate", validation_alias="upToDate")
+    started_at: datetime = Field(serialization_alias="startedAt", validation_alias="startedAt")
+    configured_port: str = Field(serialization_alias="configuredPort", validation_alias="configuredPort")
+    quic_status: str = Field(serialization_alias="quicStatus", validation_alias="quicStatus")
+    last_quic_pinged_at: datetime = Field(serialization_alias="lastQuicPingedAt", validation_alias="lastQuicPingedAt")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class DashStorjStorageDailyEntry(BaseModel):
+    at_rest_total: float = Field(serialization_alias="atRestTotal", validation_alias="atRestTotal")
+    at_rest_total_bytes: float = Field(serialization_alias="atRestTotalBytes", validation_alias="atRestTotalBytes")
+    interval_start: datetime = Field(serialization_alias="intervalStart", validation_alias="intervalStart")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class DashStorjBandwidthDailyEgress(BaseModel):
+    repair: float
+    audit: float
+    usage: float
+
+
+class DashStorjBandwidthDailyIngress(BaseModel):
+    repair: float
+    usage: float
+
+
+class DashStorjBandwidthDailyEntry(BaseModel):
+    egress: DashStorjBandwidthDailyEgress
+    ingress: DashStorjBandwidthDailyIngress
+    delete: float
+    interval_start: datetime = Field(serialization_alias="intervalStart", validation_alias="intervalStart")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class DashStorjAuditEntry(BaseModel):
+    audit_score: float = Field(serialization_alias="auditScore", validation_alias="auditScore")
+    suspension_score: float = Field(serialization_alias="suspensionScore", validation_alias="suspensionScore")
+    online_score: float = Field(serialization_alias="onlineScore", validation_alias="onlineScore")
+    satellite_name: str = Field(serialization_alias="satelliteName", validation_alias="satelliteName")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class DashStorjNodeStatistics(BaseModel):
+    storage_daily: list[DashStorjStorageDailyEntry] = Field(default_factory=list, serialization_alias="storageDaily", validation_alias="storageDaily")
+    bandwidth_daily: list[DashStorjBandwidthDailyEntry] = Field(default_factory=list, serialization_alias="bandwidthDaily", validation_alias="bandwidthDaily")
+    storage_summary: float = Field(serialization_alias="storageSummary", validation_alias="storageSummary")
+    average_usage_bytes: float = Field(serialization_alias="averageUsageBytes", validation_alias="averageUsageBytes")
+    bandwidth_summary: float = Field(serialization_alias="bandwidthSummary", validation_alias="bandwidthSummary")
+    egress_summary: float = Field(serialization_alias="egressSummary", validation_alias="egressSummary")
+    ingress_summary: float = Field(serialization_alias="ingressSummary", validation_alias="ingressSummary")
+    earliest_joined_at: datetime = Field(serialization_alias="earliestJoinedAt", validation_alias="earliestJoinedAt")
+    audits: list[DashStorjAuditEntry] = Field(default_factory=list)
+
+    model_config = ConfigDict(populate_by_name=True)
