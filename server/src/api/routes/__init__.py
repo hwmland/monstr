@@ -13,6 +13,7 @@ from . import (
 	diskusage,
 	satelliteusage,
 	access_logs,
+	dash,
 )
 
 
@@ -31,4 +32,5 @@ __all__ = [
 	"diskusage",
 	"satelliteusage",
 	"access_logs",
+	"dash",
 ]

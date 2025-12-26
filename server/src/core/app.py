@@ -26,6 +26,7 @@ from ..api.routes import (
     diskusage,
     satelliteusage,
     access_logs,
+    dash,
 )
 from ..config import Settings
 from ..database import configure_database, init_database
@@ -147,6 +148,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(diskusage.router)
     app.include_router(satelliteusage.router)
     app.include_router(access_logs.router)
+    app.include_router(dash.router)
 
     frontend_path = settings.frontend_path
     if frontend_path and frontend_path.exists():
