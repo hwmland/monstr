@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 import time
 
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
 from ..api.routes import (
     health,
@@ -36,6 +37,16 @@ from ..services.node_api import NodeApiService
 from ..services.transfer_grouping import TransferGroupingService
 
 logger = get_logger(__name__)
+
+
+class SPAStaticFiles(StaticFiles):
+    """Serve SPA assets with index.html fallback for client-side routes."""
+
+    async def get_response(self, path: str, scope):  # type: ignore[override]
+        response: Response = await super().get_response(path, scope)
+        if response.status_code == 404:
+            response = await super().get_response("index.html", scope)
+        return response
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -154,7 +165,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if frontend_path and frontend_path.exists():
         app.mount(
             "/",
-            StaticFiles(directory=frontend_path, html=True),
+            SPAStaticFiles(directory=frontend_path, html=True),
             name="frontend",
         )
     else:
