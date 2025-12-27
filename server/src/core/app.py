@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import time
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -163,6 +164,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     frontend_path = settings.frontend_path
     if frontend_path and frontend_path.exists():
+        index_file = frontend_path / "index.html"
+
+        if index_file.exists():
+            @app.get("/dash", include_in_schema=False)
+            @app.get("/dash/{rest_of_path:path}", include_in_schema=False)
+            async def serve_dash_spa(rest_of_path: str | None = None):
+                return FileResponse(index_file)
+
         app.mount(
             "/",
             SPAStaticFiles(directory=frontend_path, html=True),
