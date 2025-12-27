@@ -906,6 +906,12 @@ select.button option:disabled {
   grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
 }
 
+@media (min-width: 1200px) {
+  .dash-node-grid {
+    grid-template-columns: repeat(auto-fit, minmax(640px, 1fr));
+  }
+}
+
 .dash-grid {
   display: grid;
   gap: 0.25rem;
