@@ -217,6 +217,7 @@ const NodePanel = ({ nodeName, refreshToken }: NodePanelProps) => {
     : [];
 
   const diskTotalDisplay = diskSpace ? formatBytesShort(diskSpace.available) : "N/A";
+  const diskTotalValue = diskSpace?.available ?? 0;
 
   const toggleExpanded = (chart: "bandwidth" | "storage") => {
     setExpandedChart((current) => (current === chart ? null : chart));
@@ -227,6 +228,139 @@ const NodePanel = ({ nodeName, refreshToken }: NodePanelProps) => {
 
   const chartCardClass = (chart: "bandwidth" | "storage") =>
     `dash-node-mini dash-node-mini--expandable${expandedChart === chart ? " dash-node-mini--expanded" : ""}${cardVisibilityClass(chart)}`;
+
+  const handleKeyToggle = (chart: "bandwidth" | "storage") => (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toggleExpanded(chart);
+    }
+  };
+
+  const renderBandwidthCard = () => (
+    <div
+      className={chartCardClass("bandwidth")}
+      role="button"
+      tabIndex={0}
+      onClick={() => toggleExpanded("bandwidth")}
+      onKeyDown={handleKeyToggle("bandwidth")}
+    >
+      <span className="dash-node-mini__label">Bandwidth this month</span>
+      <span className="dash-node-mini__value">{formatBytesShort(stats?.bandwidthSummary ?? 0)}</span>
+      <div className="dash-mini-chart">
+        {bandwidthStackedSeries.length === 0 ? (
+          <p className="panel__status">No bandwidth history available.</p>
+        ) : (
+          <ResponsiveContainer height="100%">
+            <ComposedChart data={bandwidthStackedSeries} margin={{ top: 2, right: 1, left: 2, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="label" tickMargin={8} />
+              <YAxis
+                width={40}
+                allowDecimals={false}
+                tickFormatter={(v: number) => `${Math.round(Number(v))}`}
+                domain={[0, bandwidthMaxOverall ? bandwidthMaxOverall * 1.05 : "auto"]}
+                label={{ value: bandwidthUnit.unit, angle: -90, position: "insideLeft" }}
+              />
+              <Tooltip content={renderBandwidthTooltip} wrapperStyle={{ zIndex: 50 }} />
+              <Area type="monotone" dataKey="ingress" stroke="none" fill="#ffc52f" isAnimationActive={false} name="Ingress" />
+              <Area type="monotone" dataKey="egress" stroke="none" fill="#00CE7D" isAnimationActive={false} name="Egress" />
+              <Line type="monotone" dataKey="total" stroke="#2582FF" dot={false} isAnimationActive={false} name="Total" connectNulls />
+              {bandwidthMaxTotal > 0 ? <ReferenceLine y={bandwidthMaxTotal} stroke="#2582FF" strokeDasharray="5 2" /> : null}
+              {bandwidthMaxEgress > 0 ? <ReferenceLine y={bandwidthMaxEgress} stroke="#00CE7D" strokeDasharray="5 2" /> : null}
+              {bandwidthMaxIngress > 0 ? <ReferenceLine y={bandwidthMaxIngress} stroke="#ffc52f" strokeDasharray="5 2" /> : null}
+            </ComposedChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderStorageCard = () => (
+    <div
+      className={chartCardClass("storage")}
+      role="button"
+      tabIndex={0}
+      onClick={() => toggleExpanded("storage")}
+      onKeyDown={handleKeyToggle("storage")}
+    >
+      <span className="dash-node-mini__label">Avg Disk Usage this month</span>
+      <span className="dash-node-mini__value">{formatBytesShort(stats?.averageUsageBytes ?? 0)}</span>
+      <div className="dash-mini-chart">
+        {storageSeries.length === 0 ? (
+          <p className="panel__status">No storage history available.</p>
+        ) : (
+          <ResponsiveContainer height="100%">
+            <AreaChart data={storageSeries} margin={{ top: 2, right: 1, left: 2, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="label" tickMargin={8} />
+              <YAxis
+                width={40}
+                allowDecimals={false}
+                tickFormatter={(v: number) => `${Math.round(Number(v))}`}
+                label={{ value: storageUnit.unit, angle: -90, position: "insideLeft" }}
+              />
+              <Tooltip content={renderStorageTooltip} wrapperStyle={{ zIndex: 50 }} />
+              <Area type="monotone" dataKey="value" stroke="#3b82f6" fill="#2563eb" isAnimationActive={false} />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderDiskCard = () => (
+    <div className={`dash-node-mini${cardVisibilityClass("disk")}`}>
+      <span className="dash-node-mini__label">Total Disk Space {diskTotalDisplay}</span>
+      {diskSpace ? (
+        <>
+          <div className="dash-mini-chart dash-mini-chart--pie">
+            <ResponsiveContainer width="90%" height={170}>
+              <PieChart>
+                <Pie
+                  data={diskSpaceBreakdown}
+                  dataKey="value"
+                  nameKey="label"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius="45%"
+                  outerRadius="95%"
+                  paddingAngle={0}
+                  isAnimationActive={false}
+                  labelLine={false}
+                >
+                  {diskSpaceBreakdown.map((entry) => (
+                    <Cell key={entry.key} fill={entry.color} />
+                  ))}
+                </Pie>
+                <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle" fill="#e2e8f0" fontSize={14} fontWeight={600}>
+                  {diskTotalDisplay}
+                </text>
+                <Tooltip content={renderDiskTooltip} wrapperStyle={{ zIndex: 50 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="dash-node-mini__legend" role="table" aria-label="Disk space breakdown">
+            {diskSpaceBreakdown.map((entry) => {
+              const ratio = diskTotalValue > 0 ? entry.value / diskTotalValue : 0;
+              const percent = `${Math.round(ratio * 100)}%`;
+              return (
+                <div key={entry.key} className="dash-node-mini__legend-row" role="row">
+                  <div className="dash-node-mini__legend-segment" role="cell">
+                    <span className="dash-node-mini__swatch" style={{ backgroundColor: entry.color }} aria-hidden />
+                    <span className="dash-node-mini__legend-label">{entry.label}</span>
+                  </div>
+                  <span className="dash-node-mini__legend-percent" role="cell">{percent}</span>
+                  <strong className="dash-node-mini__legend-value" role="cell">{formatBytesShort(entry.value)}</strong>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        <p className="panel__status">Disk space info unavailable.</p>
+      )}
+    </div>
+  );
 
   return (
     <section className="panel dash-node-card">
@@ -245,144 +379,9 @@ const NodePanel = ({ nodeName, refreshToken }: NodePanelProps) => {
           <StatusBlock details={details} />
 
           <div className="dash-node-trio">
-            <div
-              className={chartCardClass("bandwidth")}
-              role="button"
-              tabIndex={0}
-              onClick={() => toggleExpanded("bandwidth")}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  toggleExpanded("bandwidth");
-                }
-              }}
-            >
-              <span className="dash-node-mini__label">Bandwidth this month</span>
-              <span className="dash-node-mini__value">{formatBytesShort(stats?.bandwidthSummary ?? 0)}</span>
-              <div className="dash-mini-chart">
-                {bandwidthStackedSeries.length === 0 ? (
-                  <p className="panel__status">No bandwidth history available.</p>
-                ) : (
-                  <ResponsiveContainer height="100%">
-                    <ComposedChart data={bandwidthStackedSeries} margin={{ top: 2, right: 1, left: 2, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="label" tickMargin={8} />
-                      <YAxis
-                        width={40}
-                        allowDecimals={false}
-                        tickFormatter={(v: number) => `${Math.round(Number(v))}`}
-                        domain={[0, bandwidthMaxOverall ? bandwidthMaxOverall * 1.05 : "auto"]}
-                        label={{ value: bandwidthUnit.unit, angle: -90, position: "insideLeft" }}
-                      />
-                      <Tooltip content={renderBandwidthTooltip} wrapperStyle={{ zIndex: 50 }} />
-                      <Area type="monotone" dataKey="ingress" stroke="none" fill="#ffc52f" isAnimationActive={false} name="Ingress" />
-                      <Area type="monotone" dataKey="egress" stroke="none" fill="#00CE7D" isAnimationActive={false} name="Egress" />
-                      <Line
-                        type="monotone"
-                        dataKey="total"
-                        stroke="#2582FF"
-                        dot={false}
-                        isAnimationActive={false}
-                        name="Total"
-                        connectNulls
-                      />
-                      {bandwidthMaxTotal > 0 ? <ReferenceLine y={bandwidthMaxTotal} stroke="#2582FF" strokeDasharray="5 2" /> : null}
-                      {bandwidthMaxEgress > 0 ? <ReferenceLine y={bandwidthMaxEgress} stroke="#00CE7D" strokeDasharray="5 2" /> : null}
-                      {bandwidthMaxIngress > 0 ? <ReferenceLine y={bandwidthMaxIngress} stroke="#ffc52f" strokeDasharray="5 2" /> : null}
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
-            </div>
-
-            <div
-              className={chartCardClass("storage")}
-              role="button"
-              tabIndex={0}
-              onClick={() => toggleExpanded("storage")}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  toggleExpanded("storage");
-                }
-              }}
-            >
-              <span className="dash-node-mini__label">Avg Disk Usage this month</span>
-              <span className="dash-node-mini__value">{formatBytesShort(stats?.averageUsageBytes ?? 0)}</span>
-              <div className="dash-mini-chart">
-                {storageSeries.length === 0 ? (
-                  <p className="panel__status">No storage history available.</p>
-                ) : (
-                  <ResponsiveContainer height="100%">
-                    <AreaChart data={storageSeries} margin={{ top: 2, right: 1, left: 2, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="label" tickMargin={8} />
-                      <YAxis
-                        width={40}
-                        allowDecimals={false}
-                        tickFormatter={(v: number) => `${Math.round(Number(v))}`}
-                        label={{ value: storageUnit.unit, angle: -90, position: "insideLeft" }}
-                      />
-                      <Tooltip content={renderStorageTooltip} wrapperStyle={{ zIndex: 50 }} />
-                      <Area type="monotone" dataKey="value" stroke="#3b82f6" fill="#2563eb" isAnimationActive={false} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
-            </div>
-
-            <div className={`dash-node-mini${cardVisibilityClass("disk")}`}>
-              <span className="dash-node-mini__label">Total Disk Space {diskTotalDisplay}</span>
-              {diskSpace ? (
-                <>
-                  <div className="dash-mini-chart dash-mini-chart--pie">
-                    <ResponsiveContainer width="90%" height={170}>
-                      <PieChart>
-                        <Pie
-                          data={diskSpaceBreakdown}
-                          dataKey="value"
-                          nameKey="label"
-                          cx="50%"
-                          cy="50%"
-                          innerRadius="45%"
-                          outerRadius="95%"
-                          paddingAngle={0}
-                          isAnimationActive={false}
-                          labelLine={false}
-                        >
-                          {diskSpaceBreakdown.map((entry) => (
-                            <Cell key={entry.key} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <text
-                          x="50%"
-                          y="50%"
-                          textAnchor="middle"
-                          dominantBaseline="middle"
-                          fill="#e2e8f0"
-                          fontSize={14}
-                          fontWeight={600}
-                        >
-                          {diskTotalDisplay}
-                        </text>
-                        <Tooltip content={renderDiskTooltip} wrapperStyle={{ zIndex: 50 }} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div className="dash-node-mini__legend">
-                    {diskSpaceBreakdown.map((entry) => (
-                      <div key={entry.key} className="dash-node-mini__legend-row">
-                        <span className="dash-node-mini__swatch" style={{ backgroundColor: entry.color }} />
-                        <span className="dash-node-mini__legend-label">{entry.label}</span>
-                        <strong>{formatBytesShort(entry.value)}</strong>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <p className="panel__status">Disk space info unavailable.</p>
-              )}
-            </div>
+            {renderBandwidthCard()}
+            {renderStorageCard()}
+            {renderDiskCard()}
           </div>
 
           <div className="dash-sat-grid dash-sat-grid--tight">

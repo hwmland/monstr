@@ -17,11 +17,12 @@ const scoreColor = (score: number | null) => {
 };
 
 const SatelliteComponent = ({ satellite, audit }: SatelliteComponentProps) => {
-  const auditScore = audit ? Math.min(audit.suspensionScore ?? 0, audit.auditScore ?? 0, audit.onlineScore ?? 0) : 0;
+  const globalScore = audit ? Math.min(audit.suspensionScore ?? 0, audit.auditScore ?? 0, audit.onlineScore ?? 0) : 0;
   const suspensionScore = audit?.suspensionScore ?? null;
   const onlineScore = audit?.onlineScore ?? null;
-  const iconColor = scoreColor(auditScore);
-  const Icon = auditScore !== null && auditScore >= 0.99 ? FaCheckCircle : FaExclamationTriangle;
+  const auditScore = audit?.auditScore ?? null;
+  const iconColor = scoreColor(globalScore);
+  const Icon = globalScore !== null && globalScore >= 0.99 ? FaCheckCircle : FaExclamationTriangle;
 
   return (
     <div className="dash-sat-card">

@@ -1141,10 +1141,10 @@ select.button option:disabled {
 }
 
 .dash-node-mini__legend-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 0.6fr 1fr;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.3rem;
+  column-gap: 0.4rem;
 }
 
 .dash-node-mini__legend-row strong {
@@ -1160,10 +1160,24 @@ select.button option:disabled {
   flex-shrink: 0;
 }
 
+.dash-node-mini__legend-segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 .dash-node-mini__legend-label {
-  flex: 1;
   text-align: left;
   color: var(--color-text);
+}
+
+.dash-node-mini__legend-percent {
+  text-align: right;
+  color: var(--color-text-muted);
+}
+
+.dash-node-mini__legend-value {
+  text-align: right;
 }
 
 .dash-card__title {
