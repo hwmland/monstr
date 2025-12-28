@@ -698,7 +698,6 @@ class DashStorjBandwidthDailyEntry(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-
 class DashStorjAuditEntry(BaseModel):
     audit_score: float = Field(serialization_alias="auditScore", validation_alias="auditScore")
     suspension_score: float = Field(serialization_alias="suspensionScore", validation_alias="suspensionScore")
@@ -718,5 +717,13 @@ class DashStorjNodeStatistics(BaseModel):
     ingress_summary: float = Field(serialization_alias="ingressSummary", validation_alias="ingressSummary")
     earliest_joined_at: datetime = Field(serialization_alias="earliestJoinedAt", validation_alias="earliestJoinedAt")
     audits: list[DashStorjAuditEntry] = Field(default_factory=list)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+# IP24 status schema
+class IP24StatusEntry(BaseModel):
+    valid: bool
+    expected_instances: int = Field(serialization_alias="expectedInstances", validation_alias="expectedInstances")
+    instances: Optional[int] = None
 
     model_config = ConfigDict(populate_by_name=True)

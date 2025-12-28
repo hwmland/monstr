@@ -17,6 +17,12 @@ class SourceDefinition:
     nodeapi: Optional[str] = None
 
 
+@dataclass(frozen=True)
+class IP24Definition:
+    ip: str
+    expected_instances: int
+
+
 class Settings(BaseSettings):
     """Application configuration sourced from environment variables or overrides."""
 
@@ -37,6 +43,9 @@ class Settings(BaseSettings):
     # `str | List[str]` prevents pydantic-settings from attempting JSON
     # decoding on simple comma-separated env strings.
     sources: str | List[str] = []
+    # Expected node instances per IP (string entries like "1.2.3.4:2" or
+    # "node.example.com:3"). Allow multiple or none; JSON list accepted via env.
+    ip24: str | List[str] = []
     log_batch_size: int = 32
     nodeapi_poll_interval_seconds: int = 60
     # Interval (seconds) after which the estimated-payout endpoint should be
@@ -92,6 +101,27 @@ class Settings(BaseSettings):
                         return [str(item).strip() for item in decoded if str(item).strip()]
                 except Exception:
                     # fall back to comma/newline splitting below
+                    pass
+            cleaned = value.replace("\n", ",")
+            return [item.strip() for item in cleaned.split(",") if item.strip()]
+        if isinstance(value, (tuple, set, list)):
+            return [str(item).strip() for item in value if str(item).strip()]
+        return value
+
+    @field_validator("ip24", mode="before")
+    @classmethod
+    def _coerce_ip24(cls, value):
+        """Allow comma/newline separated or JSON list env strings for ip24."""
+        if value in (None, ""):
+            return []
+        if isinstance(value, str):
+            v = value.strip()
+            if v.startswith("[") or v.startswith("{"):
+                try:
+                    decoded = json.loads(v)
+                    if isinstance(decoded, (list, tuple, set)):
+                        return [str(item).strip() for item in decoded if str(item).strip()]
+                except Exception:
                     pass
             cleaned = value.replace("\n", ",")
             return [item.strip() for item in cleaned.split(",") if item.strip()]
@@ -171,6 +201,30 @@ class Settings(BaseSettings):
             else:
                 path = Path(spec).expanduser().resolve()
                 parsed.append(SourceDefinition(name=name, kind="file", path=path, nodeapi=nodeapi))
+        return parsed
+
+    @property
+    def parsed_ip24(self) -> List[IP24Definition]:
+        """Return structured IP24 definitions parsed from `ip24` entries."""
+        parsed: List[IP24Definition] = []
+        for raw in self.ip24 or []:
+            entry = str(raw).strip()
+            if not entry:
+                continue
+            if ":" not in entry:
+                raise ValueError(f"Invalid ip24 declaration '{entry}'; expected IP:INSTANCES")
+            ip_part, count_part = entry.split(":", 1)
+            ip_part = ip_part.strip()
+            count_part = count_part.strip()
+            if not ip_part or not count_part:
+                raise ValueError(f"Invalid ip24 declaration '{entry}'; expected IP:INSTANCES")
+            try:
+                expected = int(count_part)
+            except ValueError as exc:  # noqa: PERF203
+                raise ValueError(f"Invalid ip24 instances value in '{entry}'") from exc
+            if expected < 0:
+                raise ValueError(f"Invalid ip24 instances value in '{entry}'; must be non-negative")
+            parsed.append(IP24Definition(ip=ip_part, expected_instances=expected))
         return parsed
 
     @staticmethod

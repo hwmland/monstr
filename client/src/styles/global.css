@@ -338,6 +338,73 @@ select.button option:disabled {
   gap: 0.4rem;
 }
 
+.nodes-ip24-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+}
+
+.nodes-ip24-indicator--warn {
+  color: #f59e0b;
+}
+
+.nodes-ip24-indicator--error {
+  color: #ef4444;
+}
+
+.nodes-ip24-tooltip {
+  min-width: 320px;
+  max-width: 360px;
+  background: #0f172a;
+  color: #e2e8f0;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 10px;
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.35);
+  padding: 0.75rem;
+  z-index: 1000;
+}
+
+.nodes-ip24-tooltip__title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin: 0 0 0.35rem;
+}
+
+.nodes-ip24-tooltip__empty {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #cbd5e1;
+}
+
+.nodes-ip24-tooltip__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.nodes-ip24-tooltip__table th,
+.nodes-ip24-tooltip__table td {
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+}
+
+.nodes-ip24-tooltip__table th {
+  font-weight: 600;
+  color: #cbd5e1;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.nodes-ip24-row--warn td {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+}
+
+.nodes-ip24-row--error td {
+  background: rgba(239, 68, 68, 0.14);
+  color: #fca5a5;
+}
+
 .button--ghost {
   background: transparent;
   border-color: rgba(148, 163, 184, 0.35);

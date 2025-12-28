@@ -28,6 +28,7 @@ from ..api.routes import (
     diskusage,
     satelliteusage,
     access_logs,
+    ip24,
     dash,
 )
 from ..config import Settings
@@ -36,6 +37,7 @@ from ..services.cleanup import CleanupService
 from ..services.log_monitor import LogMonitorService
 from ..services.node_api import NodeApiService
 from ..services.transfer_grouping import TransferGroupingService
+from ..services.ip24 import IP24Service
 
 logger = get_logger(__name__)
 
@@ -64,16 +66,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         nodeapi_service = NodeApiService(settings)
         cleanup_service = CleanupService(settings)
         transfer_grouping = TransferGroupingService(settings)
+        ip24_service = IP24Service(settings)
 
         await log_monitor.start()
         await nodeapi_service.start()
         await cleanup_service.start()
         await transfer_grouping.start()
+        await ip24_service.start()
 
         app.state.log_monitor = log_monitor
         app.state.nodeapi_service = nodeapi_service
         app.state.cleanup_service = cleanup_service
         app.state.transfer_grouping = transfer_grouping
+        app.state.ip24_service = ip24_service
 
         try:
             yield
@@ -82,6 +87,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await nodeapi_service.stop()
             await cleanup_service.stop()
             await transfer_grouping.stop()
+            await ip24_service.stop()
 
     app = FastAPI(
         title="Monstr Log Monitor",
@@ -160,6 +166,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(diskusage.router)
     app.include_router(satelliteusage.router)
     app.include_router(access_logs.router)
+    app.include_router(ip24.router)
     app.include_router(dash.router)
 
     frontend_path = settings.frontend_path
