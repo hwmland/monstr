@@ -17,6 +17,7 @@ import type {
   DiskUsageUsageMode,
   DiskUsageUsageNode,
   DiskUsageUsageResponse,
+  IP24StatusResponse,
 } from "../types";
 
 const DEFAULT_API_BASE_URL = import.meta.env.DEV ? "http://localhost:8000/api" : "/api";
@@ -272,6 +273,15 @@ export const fetchPayoutPaystubs = async (nodes: string[]): Promise<PaystubPerio
 export const fetchIntervalTransfers = async (nodes: string[], intervalLength: string, numberOfIntervals: number) => {
   const response = await apiClient.post("/transfer-grouped/intervals", { nodes, intervalLength, numberOfIntervals });
   return response.data;
+};
+
+export const fetchIp24Status = async (): Promise<IP24StatusResponse> => {
+  const response = await apiClient.get("/ip24");
+  const data = response.data;
+  if (!data || typeof data !== "object") {
+    return {};
+  }
+  return data as IP24StatusResponse;
 };
 
 export const fetchTransferTotals = async (nodes: string[], interval: string): Promise<TransferTotalsResponse> => {

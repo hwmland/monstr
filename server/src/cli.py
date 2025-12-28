@@ -61,6 +61,16 @@ def parse_args() -> argparse.Namespace:
             "and remote nodes. Repeatable."
         ),
     )
+    parser.add_argument(
+        "--ip24",
+        dest="ip24",
+        action="append",
+        default=[],
+        help=(
+            "Declare an IP and expected instances as IP:COUNT (e.g. 1.2.3.4:2 or host.example.com:4). "
+            "Repeatable."
+        ),
+    )
     # Deprecated separate --node / --remote flags removed in favor of --source
     parser.add_argument("--host", dest="host", help="API host binding override")
     parser.add_argument("--port", dest="port", type=int, help="API port binding override")
@@ -83,6 +93,8 @@ def build_settings(args: argparse.Namespace) -> Settings:
 
     if getattr(args, "sources", None):
         overrides["sources"] = args.sources
+    if getattr(args, "ip24", None):
+        overrides["ip24"] = args.ip24
     if args.host:
         overrides["api_host"] = args.host
     if args.port:

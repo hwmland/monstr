@@ -1,12 +1,14 @@
 import { useEffect, useState, type FC, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
+import { FaExclamationTriangle } from "react-icons/fa";
 
 import Settings from "../Settings";
 
 import useNodes from "../../hooks/useNodes";
 import useSelectedNodesStore from "../../store/useSelectedNodes";
 import { SATELLITE_ID_TO_NAME } from "../../constants/satellites";
-import type { NodeInfo } from "../../types";
+import { fetchIp24Status } from "../../services/apiClient";
+import type { IP24StatusEntry, NodeInfo } from "../../types";
 
 type DisplayNode = NodeInfo & { isAggregate?: boolean };
 
@@ -70,6 +72,11 @@ const NodesPanel: FC = () => {
   const [suppressedTooltipNode, setSuppressedTooltipNode] = useState<string | null>(null);
   const [tooltipAnchor, setTooltipAnchor] = useState<DOMRect | null>(null);
   const [activeTooltipId, setActiveTooltipId] = useState<string | null>(null);
+  const [ip24Level, setIp24Level] = useState<"none" | "warn" | "error">("none");
+  const [ip24Message, setIp24Message] = useState<string>("");
+  const [ip24Entries, setIp24Entries] = useState<Array<{ ip: string; entry: IP24StatusEntry }>>([]);
+  const [ip24TooltipAnchor, setIp24TooltipAnchor] = useState<DOMRect | null>(null);
+  const [ip24TooltipVisible, setIp24TooltipVisible] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -82,6 +89,57 @@ const NodesPanel: FC = () => {
       window.clearInterval(timer);
     };
   }, [refresh]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const computeStatus = (entries: IP24StatusEntry[]) => {
+      if (!entries.length) {
+        setIp24Level("none");
+        setIp24Message("");
+        return;
+      }
+      const hasError = entries.some((entry) => entry.valid === false);
+      const hasWarn = entries.some((entry) => entry.instances !== null && entry.instances !== entry.expectedInstances);
+      if (hasError) {
+        setIp24Level("error");
+        setIp24Message("IP24 check failed for one or more IPs");
+      } else if (hasWarn) {
+        setIp24Level("warn");
+        setIp24Message("IP24 expected vs actual instances differ");
+      } else {
+        setIp24Level("none");
+        setIp24Message("");
+      }
+    };
+
+    const fetchIp24 = async () => {
+      try {
+        const data = await fetchIp24Status();
+        if (!isMounted) return;
+        const entries = data
+          ? Object.entries(data).map(([ip, entry]) => ({ ip, entry }))
+          : [];
+        setIp24Entries(entries);
+        computeStatus(entries.map((item) => item.entry));
+      } catch (err) {
+        if (!isMounted) return;
+        setIp24Level("error");
+        setIp24Message("IP24 check failed to fetch");
+        setIp24Entries([]);
+      }
+    };
+
+    void fetchIp24();
+    const timer = window.setInterval(() => {
+      void fetchIp24();
+    }, AUTO_REFRESH_INTERVAL_MS);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   const availableNodeNames = nodes.map((node) => node.name);
   const displayNodes: DisplayNode[] = [
@@ -101,6 +159,84 @@ const NodesPanel: FC = () => {
           <p className="panel__subtitle">Connected storagenodes available for monitoring.</p>
         </div>
         <div className="panel__actions">
+          {ip24Level !== "none" ? (
+            <span
+              className={`nodes-ip24-indicator nodes-ip24-indicator--${ip24Level}`}
+              aria-label={ip24Message || "IP24 status"}
+              tabIndex={0}
+              onMouseEnter={(event) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                setIp24TooltipAnchor(rect);
+                setIp24TooltipVisible(true);
+              }}
+              onMouseLeave={() => {
+                setIp24TooltipVisible(false);
+                setIp24TooltipAnchor(null);
+              }}
+              onFocus={(event) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                setIp24TooltipAnchor(rect);
+                setIp24TooltipVisible(true);
+              }}
+              onBlur={() => {
+                setIp24TooltipVisible(false);
+                setIp24TooltipAnchor(null);
+              }}
+            >
+              <FaExclamationTriangle aria-hidden="true" />
+            </span>
+          ) : null}
+          {ip24TooltipVisible && ip24TooltipAnchor
+            ? createPortal(
+                <div
+                  className="nodes-ip24-tooltip"
+                  role="note"
+                  style={{
+                    position: "fixed",
+                    top: `${ip24TooltipAnchor.bottom + 8}px`,
+                    left: `${ip24TooltipAnchor.left + ip24TooltipAnchor.width / 2}px`,
+                    transform: "translate(-50%, 0)",
+                  }}
+                >
+                  <div className="nodes-ip24-tooltip__title">IP24 status</div>
+                  {ip24Entries.length === 0 ? (
+                    <p className="nodes-ip24-tooltip__empty">No IP24 entries</p>
+                  ) : (
+                    <table className="nodes-ip24-tooltip__table">
+                      <thead>
+                        <tr>
+                          <th>IP</th>
+                          <th>Expected</th>
+                          <th>Instances</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ip24Entries.map(({ ip, entry }) => {
+                          const isError = entry.valid === false;
+                          const isWarn = entry.instances !== null && entry.instances !== entry.expectedInstances;
+                          const rowClass = [
+                            "nodes-ip24-row",
+                            isError ? "nodes-ip24-row--error" : "",
+                            !isError && isWarn ? "nodes-ip24-row--warn" : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" ");
+
+                          return (
+                            <tr key={ip} className={rowClass}>
+                              <td>{ip}</td>
+                              <td>{entry.expectedInstances}</td>
+                              <td>{entry.valid === false ? "obsolete" : entry.instances ?? "—"}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>,
+                document.body,
+              )
+            : null}
           <Settings />
           <button className="button" type="button" onClick={() => refresh()} disabled={isLoading}>
             {isLoading ? "Refreshing…" : "Refresh"}

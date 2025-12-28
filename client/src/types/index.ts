@@ -146,3 +146,12 @@ export interface DiskUsageUsageNode {
 export interface DiskUsageUsageResponse {
   periods: Record<string, Record<string, DiskUsageUsageNode>>;
 }
+
+// IP24 monitoring
+export interface IP24StatusEntry {
+  valid: boolean;
+  expectedInstances: number;
+  instances: number | null;
+}
+
+export type IP24StatusResponse = Record<string, IP24StatusEntry>;
