@@ -1,19 +1,24 @@
 import type { FC } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import usePanelVisibilityStore from "../../store/usePanelVisibility";
 import { fetchIntervalTransfers } from "../../services/apiClient";
+import createRequestDeduper from "../../utils/requestDeduper";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell, ReferenceLine } from "recharts";
 import { formatSizeValue, pickSizeUnit, pickRateUnit, formatRateValue } from "../../utils/units";
 import PanelSubtitle from "../PanelSubtitle";
 import PanelHeader from "../PanelHeader";
-import PanelControls from "../PanelControls";
+import PanelControls, { getStoredSelection } from "../PanelControls";
 import PanelControlsButton from "../PanelControlsButton";
 import PanelControlsCombo from "../PanelControlsCombo";
 import { use24hTime } from "../../utils/time";
 import Legend from "../Legend";
 
 type Mode = "size" | "count" | "speed";
+const MODE_VALUES = ["size", "count", "speed"] as const satisfies readonly Mode[];
 type Range = "5m" | "1h" | "6h" | "30h" | "8d" | "30d" | "90d";
+const RANGE_VALUES = ["5m", "1h", "6h", "30h", "8d", "30d", "90d"] as const satisfies readonly Range[];
+type Layout = "stacked" | "grouped";
+const LAYOUT_VALUES = ["stacked", "grouped"] as const satisfies readonly Layout[];
 
 const RANGE_MAP: Record<Range, { intervalLength: string; numberOfIntervals: number }> = {
   "5m": { intervalLength: "10s", numberOfIntervals: 30 },
@@ -130,23 +135,34 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
   const { isVisible } = usePanelVisibilityStore();
   const show = isVisible("accumulatedTraffic");
   if (!show) return null;
-  const [mode, setMode] = useState<Mode>("speed");
-  const [range, setRange] = useState<Range>("1h");
-  const [layout, setLayout] = useState<'stacked' | 'grouped'>('stacked');
+  const [mode, setMode] = useState<Mode>(() =>
+    getStoredSelection<Mode>("monstr.panel.AccumulatedTraffic.mode", MODE_VALUES, "speed"),
+  );
+  const [range, setRange] = useState<Range>(() =>
+    getStoredSelection<Range>("monstr.panel.AccumulatedTraffic.range", RANGE_VALUES, "1h"),
+  );
+  const [layout, setLayout] = useState<Layout>(() =>
+    getStoredSelection<Layout>("monstr.panel.AccumulatedTraffic.layout", LAYOUT_VALUES, "stacked"),
+  );
   const [data, setData] = useState<any[] | null>(null);
   const [startTime, setStartTime] = useState<string | null>(null);
   const [endTime, setEndTime] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const deduperRef = useRef(createRequestDeduper());
   const [hoverValue, setHoverValue] = useState<number | null>(null);
   const [hoverLabel, setHoverLabel] = useState<string | null>(null);
   const [hoverSeries, setHoverSeries] = useState<'dl' | 'ul' | null>(null);
   const [chartWidth, setChartWidth] = useState<number | null>(null);
   const load = async () => {
+    // dedupe rapid duplicate loads for the same node selection
+    const deduper = deduperRef.current;
+    const nodes = selectedNodes.includes("All") ? [] : selectedNodes;
+    if (deduper.isDuplicate(nodes, 1000)) return;
+
     setLoading(true);
     setError(null);
     try {
-      const nodes = selectedNodes.includes("All") ? [] : selectedNodes;
       const mapping = RANGE_MAP[range];
       const res = await fetchIntervalTransfers(nodes, mapping.intervalLength, mapping.numberOfIntervals);
       setStartTime(res.startTime ?? null);
@@ -297,6 +313,27 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
     ? { stackId: 'a' as const }
     : { barSize: groupedBarMetrics.barSize, maxBarSize: groupedBarMetrics.barSize };
 
+  // When in grouped layout, compute average DL/UL across buckets for reference lines
+  const groupedAverages = useMemo(() => {
+    if (layout !== 'grouped' || !chartData || chartData.length === 0) {
+      return { dl: null as number | null, ul: null as number | null };
+    }
+    let sumDl = 0;
+    let sumUl = 0;
+    let count = 0;
+    for (const row of chartData) {
+      const dl = Number(row?.dl ?? 0);
+      const ul = Number(row?.ul ?? 0);
+      if (Number.isFinite(dl) && Number.isFinite(ul)) {
+        sumDl += dl;
+        sumUl += ul;
+        count += 1;
+      }
+    }
+    if (count === 0) return { dl: null, ul: null };
+    return { dl: sumDl / count, ul: sumUl / count };
+  }, [layout, chartData]);
+
   const highlightIndex = useMemo(() => {
     if (range !== "30h" || !chartData || chartData.length < 25) return -1;
     // 24th bar from the right
@@ -314,13 +351,15 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
           <>
             <PanelControls
               ariaLabel="Layout"
+              storageKey="monstr.panel.AccumulatedTraffic.layout"
               buttons={[
-                <PanelControlsButton key="stack" active={layout === "stacked"} onClick={() => setLayout("stacked")} content="Stack" />,
-                <PanelControlsButton key="group" active={layout === "grouped"} onClick={() => setLayout("grouped")} content="Grp" />,
+                <PanelControlsButton key="stacked" active={layout === "stacked"} onClick={() => setLayout("stacked")} content="Stack" />,
+                <PanelControlsButton key="grouped" active={layout === "grouped"} onClick={() => setLayout("grouped")} content="Grp" />,
               ]}
             />
             <PanelControls
               ariaLabel="Display mode"
+              storageKey="monstr.panel.AccumulatedTraffic.mode"
               buttons={[
                 <PanelControlsButton key="speed" active={mode === "speed"} onClick={() => setMode("speed")} content="Speed" />,
                 <PanelControlsButton key="size" active={mode === "size"} onClick={() => setMode("size")} content="Size" />,
@@ -329,12 +368,19 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
             />
             <PanelControls
               ariaLabel="Time range"
+              storageKey="monstr.panel.AccumulatedTraffic.range"
               buttons={[
                 <PanelControlsButton key="5m" active={range === "5m"} onClick={() => setRange("5m")} content="5m" />,
                 <PanelControlsButton key="1h" active={range === "1h"} onClick={() => setRange("1h")} content="1h" />,
                 <PanelControlsButton key="6h" active={range === "6h"} onClick={() => setRange("6h")} content="6h" />,
                 <PanelControlsButton key="30h" active={range === "30h"} onClick={() => setRange("30h")} content="30h" />,
-                <PanelControlsCombo key="long-range" options={LONG_RANGE_OPTIONS} activeValue={range} defaultValue="90d" onSelect={(value) => setRange(value as Range)}
+                <PanelControlsCombo
+                  key="long-range"
+                  options={LONG_RANGE_OPTIONS}
+                  activeValue={range}
+                  defaultValue="90d"
+                  onSelect={(value) => setRange(value as Range)}
+                  storageKey="monstr.panel.AccumulatedTraffic.range"
                 />,
               ]}
             />
@@ -425,7 +471,22 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
                     <Cell key={`ul-${i}`} stroke={i === highlightIndex ? '#ef4444' : undefined} strokeWidth={i === highlightIndex ? 2 : undefined} />
                   ))}
                 </Bar>
-                {layout === 'grouped' ? <></> : null}
+                {layout === 'grouped' && groupedAverages.dl != null ? (
+                  <ReferenceLine
+                    y={groupedAverages.dl}
+                    stroke="#10784A"
+                    strokeWidth={1}
+                    ifOverflow="extendDomain"
+                  />
+                ) : null}
+                {layout === 'grouped' && groupedAverages.ul != null ? (
+                  <ReferenceLine
+                    y={groupedAverages.ul}
+                    stroke="#34D399"
+                    strokeWidth={1}
+                    ifOverflow="extendDomain"
+                  />
+                ) : null}
                 {hoverValue != null ? (
                   <ReferenceLine y={hoverValue} stroke="#9ca3af" strokeWidth={1} ifOverflow="extendDomain" label={hoverLabel ? { value: hoverLabel, position: 'insideBottomLeft', fill: '#ffffff' } : undefined} />
                 ) : null}

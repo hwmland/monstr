@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { fetchReputationsPanel } from "../services/apiClient";
+import createRequestDeduper from "../utils/requestDeduper";
 import useSelectedNodesStore from "../store/useSelectedNodes";
 import type { NodeReputation } from "../types";
 
@@ -30,12 +31,15 @@ const useReputationsPanel = (): ReputationsPanelState => {
   useEffect(() => {
     let isCurrent = true;
 
+    const deduper = deduperRef.current;
+
     const load = async () => {
       setIsLoading(true);
       setError(null);
 
       try {
-        const data = await fetchReputationsPanel(requestPayload);
+        // Use coalesce to share an in-flight request for the same selection.
+        const data = await deduper.coalesce(requestPayload, () => fetchReputationsPanel(requestPayload));
         if (isCurrent) {
           setReputations(data);
         }
@@ -69,6 +73,8 @@ const useReputationsPanel = (): ReputationsPanelState => {
       window.clearInterval(interval);
     };
   }, [requestPayload, refreshToken]);
+
+  const deduperRef = useRef(createRequestDeduper());
 
   const refresh = useCallback(() => {
     setRefreshToken((value) => value + 1);

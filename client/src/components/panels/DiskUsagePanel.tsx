@@ -1,16 +1,16 @@
-import type { FC } from "react";
+﻿import type { FC } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { Area, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 
 import usePanelVisibilityStore from "../../store/usePanelVisibility";
 import PanelHeader from "../PanelHeader";
 import PanelSubtitle from "../PanelSubtitle";
-import PanelControls from "../PanelControls";
+import PanelControls, { getStoredSelection } from "../PanelControls";
 import PanelControlsButton from "../PanelControlsButton";
 import PanelControlsCheckbox from "../PanelControlsCheckbox";
 import useDiskUsageUsage from "../../hooks/useDiskUsageUsage";
 import { formatSizeValue, pickSizeUnit } from "../../utils/units";
-import type { DiskUsageUsageMode, DiskUsageUsageNode } from "../../types";
+import { DISK_USAGE_MODE_VALUES, type DiskUsageUsageMode, type DiskUsageUsageNode } from "../../types";
 
 interface DiskUsagePanelProps {
 	selectedNodes: string[];
@@ -20,7 +20,12 @@ type IntervalKey = "8d" | "30d" | "90d" | "1y";
 
 type LayoutMode = "stacked" | "separate";
 
-const INTERVAL_KEYS: IntervalKey[] = ["8d", "30d", "90d", "1y"];
+const INTERVAL_VALUES = ["8d", "30d", "90d", "1y"] as const satisfies readonly IntervalKey[];
+const LAYOUT_MODE_VALUES = ["stacked", "separate"] as const satisfies readonly LayoutMode[];
+
+const BOOLEAN_OPTIONS = ["true", "false"] as const;
+const SHOW_PERCENT_KEY = "monstr.panel.DiskUsage.showPercent";
+const ZOOM_KEY = "monstr.panel.DiskUsage.zoom";
 
 const INTERVAL_TO_DAYS: Record<IntervalKey, number> = {
 	"8d": 8,
@@ -153,10 +158,39 @@ const DiskUsageTooltip: FC<{
 const DiskUsagePanel: FC<DiskUsagePanelProps> = ({ selectedNodes }) => {
 	const { isVisible } = usePanelVisibilityStore();
 	const visible = isVisible("diskUsage");
-	const [interval, setInterval] = useState<IntervalKey>("1y");
-	const [mode, setMode] = useState<DiskUsageUsageMode>("end");
-	const [layout, setLayout] = useState<LayoutMode>("stacked");
-	const [showPercent, setShowPercent] = useState(false);
+	const [interval, setInterval] = useState<IntervalKey>(() =>
+		getStoredSelection<IntervalKey>("monstr.panel.DiskUsage.interval", INTERVAL_VALUES, "1y"),
+	);
+	const [mode, setMode] = useState<DiskUsageUsageMode>(() =>
+		getStoredSelection<DiskUsageUsageMode>("monstr.panel.DiskUsage.mode", DISK_USAGE_MODE_VALUES, "end"),
+	);
+	const [layout, setLayout] = useState<LayoutMode>(() =>
+		getStoredSelection<LayoutMode>("monstr.panel.DiskUsage.layout", LAYOUT_MODE_VALUES, "stacked"),
+	);
+	const [showPercent, setShowPercent] = useState<boolean>(() =>
+		getStoredSelection(SHOW_PERCENT_KEY, BOOLEAN_OPTIONS, "false") === "true",
+	);
+	const [zoomMode, setZoomMode] = useState<boolean>(() =>
+		getStoredSelection(ZOOM_KEY, BOOLEAN_OPTIONS, "false") === "true",
+	);
+
+	const handleShowPercentChange = (value: boolean) => {
+		setShowPercent(value);
+		try {
+			localStorage.setItem(SHOW_PERCENT_KEY, value ? "true" : "false");
+		} catch {
+			// ignore
+		}
+	};
+
+	const handleZoomModeChange = (value: boolean) => {
+		setZoomMode(value);
+		try {
+			localStorage.setItem(ZOOM_KEY, value ? "true" : "false");
+		} catch {
+			// ignore
+		}
+	};
 
 	const intervalDays = INTERVAL_TO_DAYS[interval];
 
@@ -257,6 +291,37 @@ const DiskUsagePanel: FC<DiskUsagePanelProps> = ({ selectedNodes }) => {
 		void refresh();
 	};
 
+	const showCapacitySeries = !zoomMode;
+	const showTrashSeries = !zoomMode || layout === "stacked";
+
+	const absoluteYAxisDomain = useMemo(() => {
+		if (!zoomMode || chartData.length === 0) {
+			return ["auto", "auto"] as const;
+		}
+
+		let minValue = Number.POSITIVE_INFINITY;
+		let maxValue = Number.NEGATIVE_INFINITY;
+
+		chartData.forEach((point) => {
+			const usageValue = Number(point.usage);
+			const trashValue = Number(point.trash);
+			const stackedValue = showTrashSeries ? usageValue + trashValue : usageValue;
+			maxValue = Math.max(maxValue, stackedValue);
+			minValue = Math.min(minValue, usageValue);
+		});
+
+		if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) {
+			return ["auto", "auto"] as const;
+		}
+
+		const range = Math.max(maxValue - minValue, 0);
+		const padding = Math.max(range * 0.08, maxValue * 0.02, 0.1);
+		const lowerBound = Math.max(0, minValue - padding);
+		const upperBound = maxValue + padding;
+
+		return [lowerBound, upperBound] as const;
+	}, [chartData, zoomMode, showTrashSeries, layout]);
+
 	return (
 		<section className="panel">
 			<PanelHeader
@@ -271,14 +336,28 @@ const DiskUsagePanel: FC<DiskUsagePanelProps> = ({ selectedNodes }) => {
 				refreshLabels={{ idle: "Refresh", active: "Loading..." }}
 				controls={(
 					<>
-            <PanelControls
+						<PanelControls
 							ariaLabel="Disk usage toggles"
 							buttons={[
-								<PanelControlsCheckbox key="show-percent-toggle" label="Show %" checked={showPercent} onChange={setShowPercent} ariaLabel="Toggle percentage view" />,
+								<PanelControlsCheckbox
+									key="show-percent-toggle"
+									label="Show&nbsp;%"
+									checked={showPercent}
+									onChange={handleShowPercentChange}
+									ariaLabel="Toggle percentage view"
+								/>,
+								<PanelControlsCheckbox
+									key="zoom-toggle"
+									label="Zoom"
+									checked={zoomMode}
+									onChange={handleZoomModeChange}
+									ariaLabel="Toggle zoom mode"
+								/>,
 							]}
 						/>
 						<PanelControls
 							ariaLabel="Disk usage layout"
+							storageKey="monstr.panel.DiskUsage.layout"
 							buttons={[
 								<PanelControlsButton key="stacked" type="button" active={layout === "stacked"} onClick={() => setLayout("stacked")} content="Stacked" />,
 								<PanelControlsButton key="separate" type="button" active={layout === "separate"} onClick={() => setLayout("separate")} content="Separate" />,
@@ -286,13 +365,15 @@ const DiskUsagePanel: FC<DiskUsagePanelProps> = ({ selectedNodes }) => {
 						/>
 						<PanelControls
 							ariaLabel="Disk usage snapshot mode"
+							storageKey="monstr.panel.DiskUsage.mode"
 							buttons={MODE_OPTIONS.map((option) => (
 								<PanelControlsButton key={option.id} type="button" active={mode === option.id} onClick={() => setMode(option.id)} content={option.label} />
 							))}
 						/>
 						<PanelControls
 							ariaLabel="Disk usage window"
-							buttons={INTERVAL_KEYS.map((key) => (
+							storageKey="monstr.panel.DiskUsage.interval"
+							buttons={INTERVAL_VALUES.map((key) => (
 								<PanelControlsButton key={key} type="button" active={interval === key} onClick={() => setInterval(key)} content={INTERVAL_LABELS[key]} />
 							))}
 						/>
@@ -316,6 +397,7 @@ const DiskUsagePanel: FC<DiskUsagePanelProps> = ({ selectedNodes }) => {
 										tickFormatter={(value: number) => formatSizeValue(Number(value))}
 										tick={{ fill: "var(--color-text-muted)", fontSize: 12 }}
 										label={{ value: unitLabel, angle: -90, position: "insideLeft", fill: "var(--color-text-muted)", offset: 10 }}
+										domain={absoluteYAxisDomain} allowDataOverflow
 									/>
 									{showPercent ? (
 										<YAxis
@@ -343,35 +425,41 @@ const DiskUsagePanel: FC<DiskUsagePanelProps> = ({ selectedNodes }) => {
 												isAnimationActive={false}
 												activeDot={{ r: 3 }}
 											/>
-											<Area
-												yAxisId="absolute"
-												type="linear"
-												dataKey="trash"
-												name="Trash"
-												stackId="usage"
-												stroke="#F97316"
-												fill="rgba(249, 115, 22, 0.35)"
-												strokeWidth={2}
-												isAnimationActive={false}
-												activeDot={{ r: 3 }}
-											/>
+											{showTrashSeries ? (
+												<Area
+													yAxisId="absolute"
+													type="linear"
+													dataKey="trash"
+													name="Trash"
+													stackId="usage"
+													stroke="#F97316"
+													fill="rgba(249, 115, 22, 0.35)"
+													strokeWidth={2}
+													isAnimationActive={false}
+													activeDot={{ r: 3 }}
+												/>
+											) : null}
 										</>
 									) : (
 										<>
 											<Line yAxisId="absolute" type="linear" dataKey="usage" name="Usage" stroke="#38BDF8" strokeWidth={2} dot={false} isAnimationActive={false} />
-											<Line yAxisId="absolute" type="linear" dataKey="trash" name="Trash" stroke="#F97316" strokeWidth={2} dot={false} isAnimationActive={false} />
+											{showTrashSeries ? (
+												<Line yAxisId="absolute" type="linear" dataKey="trash" name="Trash" stroke="#F97316" strokeWidth={2} dot={false} isAnimationActive={false} />
+											) : null}
 										</>
 									)}
-									<Line
-										yAxisId="absolute"
-										type="linear"
-										dataKey="capacity"
-										name="Capacity"
-										stroke="#94A3B8"
-										strokeWidth={2}
-										dot={false}
-										isAnimationActive={false}
-									/>
+									{showCapacitySeries ? (
+										<Line
+											yAxisId="absolute"
+											type="linear"
+											dataKey="capacity"
+											name="Capacity"
+											stroke="#94A3B8"
+											strokeWidth={2}
+											dot={false}
+											isAnimationActive={false}
+										/>
+									) : null}
 									{showPercent ? (
 										<>
 											<Line
@@ -409,3 +497,4 @@ const DiskUsagePanel: FC<DiskUsagePanelProps> = ({ selectedNodes }) => {
 };
 
 export default DiskUsagePanel;
+

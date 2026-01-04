@@ -1274,7 +1274,7 @@ select.button option:disabled {
 
 .dash-sat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 0.2rem;
   margin-top: 0.1rem;
 }

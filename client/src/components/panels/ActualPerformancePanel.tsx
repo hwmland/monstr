@@ -1,4 +1,5 @@
 import { FC, useCallback, useEffect, useRef, useState, useLayoutEffect } from "react";
+import createRequestDeduper from "../../utils/requestDeduper";
 import { createPortal } from "react-dom";
 
 import { resolveSuccessColor } from "../../utils/colors";
@@ -89,6 +90,7 @@ const ActualPerformancePanel: FC<ActualPerformancePanelProps> = ({
   const [isPayoutLoading, setIsPayoutLoading] = useState(false);
   const payoutRequestIdRef = useRef(0);
   const isMountedRef = useRef(true);
+  const payoutDeduperRef = useRef(createRequestDeduper());
 
   // tooltip state
   const [tooltipVisible, setTooltipVisible] = useState(false);
@@ -103,14 +105,18 @@ const ActualPerformancePanel: FC<ActualPerformancePanelProps> = ({
   }, []);
 
   const refreshPayout = useCallback(async () => {
+    // compute a stable nodes argument
+    const nodesArg = selectedNodes.length > 0 && !selectedNodes.includes("All") ? [...selectedNodes] : [];
+    // dedupe rapid duplicate calls for the same selection (avoid double load)
+    const deduper = payoutDeduperRef.current;
+    if (deduper.isDuplicate(nodesArg, 1000)) {
+      return; // skip duplicate
+    }
     const requestId = ++payoutRequestIdRef.current;
+
     setIsPayoutLoading(true);
 
     try {
-      const nodesArg =
-        selectedNodes.length > 0 && !selectedNodes.includes("All")
-          ? [...selectedNodes]
-          : [];
       const payload = await fetchPayoutCurrent(nodesArg);
       const nodesMap: Record<string, PayoutNode | undefined> = (
         payload && typeof payload === "object" && "nodes" in payload

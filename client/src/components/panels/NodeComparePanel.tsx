@@ -9,20 +9,23 @@ import {
 
 import PanelHeader from "../PanelHeader";
 import PanelSubtitle from "../PanelSubtitle";
-import PanelControls from "../PanelControls";
 import PanelControlsButton from "../PanelControlsButton";
 import Legend from "../Legend";
 import usePanelVisibilityStore from "../../store/usePanelVisibility";
 import { fetchTransferTotals, fetchDiskUsageChange } from "../../services/apiClient";
+import createRequestDeduper from "../../utils/requestDeduper";
 import type { DiskUsageChangeResponse, TransferTotalsResponse } from "../../types";
 import { formatSizeValue, pickSizePresentation, pickRatePresentation, formatRateValue } from "../../utils/units";
+import PanelControls, { getStoredSelection } from "../PanelControls";
 
 interface NodeComparePanelProps {
   selectedNodes: string[];
 }
 
 type IntervalOption = "1h" | "1d" | "7d" | "30d";
+const INTERVAL_VALUES = ["1h", "1d", "7d", "30d"] as const satisfies readonly IntervalOption[];
 type ModeOption = "speed" | "size" | "count";
+const MODE_VALUES = ["speed", "size", "count"] as const satisfies readonly ModeOption[];
 
 const INTERVAL_OPTIONS: ReadonlyArray<{
   id: IntervalOption;
@@ -158,8 +161,12 @@ const NodeComparePanel: FC<NodeComparePanelProps> = ({ selectedNodes }) => {
   const { isVisible } = usePanelVisibilityStore();
   const isPanelVisible = isVisible("nodeCompare");
 
-  const [interval, setIntervalOption] = useState<IntervalOption>("1d");
-  const [mode, setMode] = useState<ModeOption>("size");
+  const [interval, setIntervalOption] = useState<IntervalOption>(() =>
+    getStoredSelection<IntervalOption>("monstr.panel.NodeCompare.interval", INTERVAL_VALUES, "1d"),
+  );
+  const [mode, setMode] = useState<ModeOption>(() =>
+    getStoredSelection<ModeOption>("monstr.panel.NodeCompare.mode", MODE_VALUES, "size"),
+  );
   const [data, setData] = useState<TransferTotalsResponse>(EMPTY_RESPONSE);
   const [usageChange, setUsageChange] = useState<DiskUsageChangeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -168,6 +175,7 @@ const NodeComparePanel: FC<NodeComparePanelProps> = ({ selectedNodes }) => {
 
   const requestIdRef = useRef(0);
   const mountedRef = useRef(true);
+  const deduperRef = useRef(createRequestDeduper());
 
   useEffect(() => {
     mountedRef.current = true;
@@ -183,7 +191,9 @@ const NodeComparePanel: FC<NodeComparePanelProps> = ({ selectedNodes }) => {
     if (!isPanelVisible) {
       return;
     }
-
+    const deduper = deduperRef.current;
+    const nodesArg = selectedNodes.length === 0 ? [] : [...selectedNodes];
+    if (deduper.isDuplicate(nodesArg, 1000)) return;
     const requestId = ++requestIdRef.current;
     setIsLoading(true);
     setError(null);
@@ -193,7 +203,6 @@ const NodeComparePanel: FC<NodeComparePanelProps> = ({ selectedNodes }) => {
     }
 
     try {
-      const nodesArg = selectedNodes.length === 0 ? [] : [...selectedNodes];
       const response = await fetchTransferTotals(nodesArg, interval);
       if (mountedRef.current && requestId === requestIdRef.current) {
         setData(response);
@@ -760,6 +769,7 @@ const NodeComparePanel: FC<NodeComparePanelProps> = ({ selectedNodes }) => {
           <>
             <PanelControls
               ariaLabel="Display mode"
+              storageKey="monstr.panel.NodeCompare.mode"
               buttons={MODE_OPTIONS.map((opt) => (
                 <PanelControlsButton
                   key={opt.id}
@@ -771,6 +781,7 @@ const NodeComparePanel: FC<NodeComparePanelProps> = ({ selectedNodes }) => {
             />
             <PanelControls
               ariaLabel="Interval"
+              storageKey="monstr.panel.NodeCompare.interval"
               buttons={INTERVAL_OPTIONS.map((opt) => (
                 <PanelControlsButton
                   key={opt.id}

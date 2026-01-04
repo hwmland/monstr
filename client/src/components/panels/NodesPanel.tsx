@@ -1,4 +1,4 @@
-import { useEffect, useState, type FC, type MouseEvent } from "react";
+import { useCallback, useEffect, useState, useRef, type FC, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { FaExclamationTriangle } from "react-icons/fa";
 
@@ -8,6 +8,7 @@ import useNodes from "../../hooks/useNodes";
 import useSelectedNodesStore from "../../store/useSelectedNodes";
 import { SATELLITE_ID_TO_NAME } from "../../constants/satellites";
 import { fetchIp24Status } from "../../services/apiClient";
+import createRequestDeduper from "../../utils/requestDeduper";
 import type { IP24StatusEntry, NodeInfo } from "../../types";
 
 type DisplayNode = NodeInfo & { isAggregate?: boolean };
@@ -75,8 +76,17 @@ const NodesPanel: FC = () => {
   const [ip24Level, setIp24Level] = useState<"none" | "warn" | "error">("none");
   const [ip24Message, setIp24Message] = useState<string>("");
   const [ip24Entries, setIp24Entries] = useState<Array<{ ip: string; entry: IP24StatusEntry }>>([]);
+  const deduperRef = useRef(createRequestDeduper());
+  const isMountedRef = useRef(true);
   const [ip24TooltipAnchor, setIp24TooltipAnchor] = useState<DOMRect | null>(null);
   const [ip24TooltipVisible, setIp24TooltipVisible] = useState(false);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -90,56 +100,53 @@ const NodesPanel: FC = () => {
     };
   }, [refresh]);
 
+  const computeIp24Status = useCallback((entries: IP24StatusEntry[]) => {
+    if (!entries.length) {
+      setIp24Level("none");
+      setIp24Message("");
+      return;
+    }
+    const hasError = entries.some((entry) => entry.valid === false);
+    const hasWarn = entries.some((entry) => entry.instances !== null && entry.instances !== entry.expectedInstances);
+    if (hasError) {
+      setIp24Level("error");
+      setIp24Message("IP24 check failed for one or more IPs");
+    } else if (hasWarn) {
+      setIp24Level("warn");
+      setIp24Message("IP24 expected vs actual instances differ");
+    } else {
+      setIp24Level("none");
+      setIp24Message("");
+    }
+  }, []);
+
+  const fetchIp24Data = useCallback(async () => {
+    const deduper = deduperRef.current;
+    if (deduper.isDuplicate([], 1000)) return;
+    try {
+      const data = await fetchIp24Status();
+      if (!isMountedRef.current) return;
+      const entries = data ? Object.entries(data).map(([ip, entry]) => ({ ip, entry })) : [];
+      setIp24Entries(entries);
+      computeIp24Status(entries.map((item) => item.entry));
+    } catch {
+      if (!isMountedRef.current) return;
+      setIp24Level("error");
+      setIp24Message("IP24 check failed to fetch");
+      setIp24Entries([]);
+    }
+  }, [computeIp24Status]);
+
   useEffect(() => {
-    let isMounted = true;
-
-    const computeStatus = (entries: IP24StatusEntry[]) => {
-      if (!entries.length) {
-        setIp24Level("none");
-        setIp24Message("");
-        return;
-      }
-      const hasError = entries.some((entry) => entry.valid === false);
-      const hasWarn = entries.some((entry) => entry.instances !== null && entry.instances !== entry.expectedInstances);
-      if (hasError) {
-        setIp24Level("error");
-        setIp24Message("IP24 check failed for one or more IPs");
-      } else if (hasWarn) {
-        setIp24Level("warn");
-        setIp24Message("IP24 expected vs actual instances differ");
-      } else {
-        setIp24Level("none");
-        setIp24Message("");
-      }
-    };
-
-    const fetchIp24 = async () => {
-      try {
-        const data = await fetchIp24Status();
-        if (!isMounted) return;
-        const entries = data
-          ? Object.entries(data).map(([ip, entry]) => ({ ip, entry }))
-          : [];
-        setIp24Entries(entries);
-        computeStatus(entries.map((item) => item.entry));
-      } catch (err) {
-        if (!isMounted) return;
-        setIp24Level("error");
-        setIp24Message("IP24 check failed to fetch");
-        setIp24Entries([]);
-      }
-    };
-
-    void fetchIp24();
+    void fetchIp24Data();
     const timer = window.setInterval(() => {
-      void fetchIp24();
+      void fetchIp24Data();
     }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
-      isMounted = false;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [fetchIp24Data]);
 
   const availableNodeNames = nodes.map((node) => node.name);
   const displayNodes: DisplayNode[] = [
@@ -149,6 +156,11 @@ const NodesPanel: FC = () => {
 
   const handleSelection = (name: string) => {
     toggleNode(name, availableNodeNames);
+  };
+
+  const handleRefreshClick = () => {
+    void refresh();
+    void fetchIp24Data();
   };
 
   return (
@@ -238,7 +250,7 @@ const NodesPanel: FC = () => {
               )
             : null}
           <Settings />
-          <button className="button" type="button" onClick={() => refresh()} disabled={isLoading}>
+          <button className="button" type="button" onClick={handleRefreshClick} disabled={isLoading}>
             {isLoading ? "Refreshing…" : "Refresh"}
           </button>
         </div>

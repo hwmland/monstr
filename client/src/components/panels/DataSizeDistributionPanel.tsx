@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import usePanelVisibilityStore from "../../store/usePanelVisibility";
 import {
   Bar,
@@ -12,15 +12,17 @@ import {
 } from "recharts";
 
 import { fetchDataDistribution } from "../../services/apiClient";
+import createRequestDeduper from "../../utils/requestDeduper";
 import Legend from "../Legend";
 import { formatSizeValue, pickSizeUnit } from "../../utils/units";
 // PanelSubtitle will format timestamps according to user preference
 import PanelSubtitle from "../PanelSubtitle";
 import PanelHeader from "../PanelHeader";
-import PanelControls from "../PanelControls";
+import PanelControls, { getStoredSelection } from "../PanelControls";
 import PanelControlsButton from "../PanelControlsButton";
 
 type Mode = "size" | "count" | "sizePercent" | "countPercent";
+const MODE_VALUES = ["size", "count", "sizePercent", "countPercent"] as const satisfies readonly Mode[];
 
 interface DataSizeDistributionPanelProps {
   selectedNodes: string[];
@@ -95,12 +97,18 @@ const DataSizeDistributionPanel: FC<DataSizeDistributionPanelProps> = ({ selecte
   if (!isVisible("dataDistribution")) {
     return null;
   }
-  const [mode, setMode] = useState<Mode>("size");
+  const [mode, setMode] = useState<Mode>(() =>
+    getStoredSelection<Mode>("monstr.panel.DataSizeDistribution.mode", MODE_VALUES, "size"),
+  );
   const [data, setData] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const deduperRef = useRef(createRequestDeduper());
 
   const load = async () => {
+    const deduper = deduperRef.current;
+    if (deduper.isDuplicate(selectedNodes.length === 0 ? [] : [...selectedNodes], 1000)) return;
+
     setLoading(true);
     setError(null);
     try {
@@ -266,11 +274,12 @@ const DataSizeDistributionPanel: FC<DataSizeDistributionPanelProps> = ({ selecte
         controls={(
           <PanelControls
             ariaLabel="Display mode"
+            storageKey="monstr.panel.DataSizeDistribution.mode"
             buttons={[
               <PanelControlsButton key="size" active={mode === "size"} onClick={() => setMode("size")} content="Size" />,
               <PanelControlsButton key="count" active={mode === "count"} onClick={() => setMode("count")} content="Count" />,
-              <PanelControlsButton key="size-percent" active={mode === "sizePercent"} onClick={() => setMode("sizePercent")} content="Size %" />,
-              <PanelControlsButton key="count-percent" active={mode === "countPercent"} onClick={() => setMode("countPercent")} content="Count %" />,
+              <PanelControlsButton key="sizePercent" active={mode === "sizePercent"} onClick={() => setMode("sizePercent")} content="Size %" />,
+              <PanelControlsButton key="countPercent" active={mode === "countPercent"} onClick={() => setMode("countPercent")} content="Count %" />,
             ]}
           />
         )}
