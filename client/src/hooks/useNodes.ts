@@ -1,12 +1,16 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { fetchNodes } from "../services/apiClient";
 import useNodeStore from "../store/useNodeStore";
+import createRequestDeduper from "../utils/requestDeduper";
 
 const useNodes = () => {
   const { nodes, isLoading, error, setNodes, setLoading, setError } = useNodeStore();
 
   const load = useCallback(async () => {
+    const deduper = deduperRef.current;
+    if (deduper.isDuplicate([], 1000)) return;
+
     setLoading(true);
     setError(undefined);
     try {
@@ -18,6 +22,8 @@ const useNodes = () => {
       setLoading(false);
     }
   }, [setError, setLoading, setNodes]);
+
+  const deduperRef = useRef(createRequestDeduper());
 
   useEffect(() => {
     void load();

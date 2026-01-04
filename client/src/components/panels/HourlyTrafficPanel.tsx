@@ -1,11 +1,12 @@
 import type { FC } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import usePanelVisibilityStore from "../../store/usePanelVisibility";
 import { fetchIntervalTransfers } from "../../services/apiClient";
+import createRequestDeduper from "../../utils/requestDeduper";
 import useSelectedNodesStore from "../../store/useSelectedNodes";
 import PanelSubtitle from "../PanelSubtitle";
 import PanelHeader from "../PanelHeader";
-import PanelControls from "../PanelControls";
+import PanelControls, { getStoredSelection } from "../PanelControls";
 import PanelControlsButton from "../PanelControlsButton";
 import { pickRatePresentation, formatRateValue, formatSizeValue, pickSizePresentation } from "../../utils/units";
 import { use24hTime } from "../../utils/time";
@@ -32,6 +33,9 @@ interface HourlyBucket {
   countUlFailRep: number;
 }
 
+type Mode = "speed" | "size";
+const MODE_VALUES = ["speed", "size"] as const satisfies readonly Mode[];
+
 const HourlyTrafficPanel: FC = () => {
   const { isVisible } = usePanelVisibilityStore();
   const show = isVisible("hourlyTraffic");
@@ -43,13 +47,19 @@ const HourlyTrafficPanel: FC = () => {
   const [endTime, setEndTime] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<"speed" | "size">("speed");
+  const deduperRef = useRef(createRequestDeduper());
+  const [mode, setMode] = useState<Mode>(() =>
+    getStoredSelection<Mode>("monstr.panel.HourlyTraffic.mode", MODE_VALUES, "speed"),
+  );
 
   const load = async () => {
+    const deduper = deduperRef.current;
+    const requestNodes = selectedNodes.includes("All") ? [] : selectedNodes;
+    if (deduper.isDuplicate(requestNodes, 1000)) return;
+
     setLoading(true);
     setError(null);
     try {
-      const requestNodes = selectedNodes.includes("All") ? [] : selectedNodes;
       const res = await fetchIntervalTransfers(requestNodes, "1h", 9);
       setStartTime(res.startTime ?? null);
       setEndTime(res.endTime ?? null);
@@ -147,6 +157,7 @@ const HourlyTrafficPanel: FC = () => {
         controls={(
           <PanelControls
             ariaLabel="Display mode"
+            storageKey="monstr.panel.HourlyTraffic.mode"
             buttons={[
               <PanelControlsButton key="speed" active={mode === "speed"} onClick={() => setMode("speed")} content="Speed" />,
               <PanelControlsButton key="size" active={mode === "size"} onClick={() => setMode("size")} content="Size" />,

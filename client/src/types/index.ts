@@ -135,6 +135,7 @@ export interface DiskUsageChangeResponse {
 }
 
 export type DiskUsageUsageMode = "end" | "maxTrash" | "maxUsage";
+export const DISK_USAGE_MODE_VALUES = ["end", "maxTrash", "maxUsage"] as const satisfies readonly DiskUsageUsageMode[];
 
 export interface DiskUsageUsageNode {
   capacity: number;

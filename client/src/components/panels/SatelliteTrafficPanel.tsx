@@ -16,11 +16,12 @@ import Legend from "../Legend";
 // PanelSubtitle will format timestamps according to user preference
 import PanelSubtitle from "../PanelSubtitle";
 import PanelHeader from "../PanelHeader";
-import PanelControls from "../PanelControls";
+import PanelControls, { getStoredSelection } from "../PanelControls";
 import PanelControlsButton from "../PanelControlsButton";
 import { formatSizeValue, pickSizeUnit } from "../../utils/units";
 
 type SatelliteTrafficMode = "size" | "count";
+const MODE_VALUES = ["size", "count"] as const satisfies readonly SatelliteTrafficMode[];
 
 const tooltipLabelMap: Record<string, string> = {
   downloadNormal: "Download Normal",
@@ -97,7 +98,9 @@ const SatelliteTrafficPanel: FC<SatelliteTrafficPanelProps> = ({
   refresh,
   selectedNodes,
 }) => {
-  const [mode, setMode] = useState<SatelliteTrafficMode>("size");
+  const [mode, setMode] = useState<SatelliteTrafficMode>(() =>
+    getStoredSelection<SatelliteTrafficMode>("monstr.panel.SatelliteTraffic.mode", MODE_VALUES, "size"),
+  );
   // nodesLabel is computed inside PanelSubtitle now
 
   const { chartData, sizeUnit } = useMemo(() => {
@@ -193,6 +196,7 @@ const SatelliteTrafficPanel: FC<SatelliteTrafficPanelProps> = ({
         controls={(
           <PanelControls
             ariaLabel="Display mode"
+            storageKey="monstr.panel.SatelliteTraffic.mode"
             buttons={[
               <PanelControlsButton key="size" active={mode === "size"} onClick={() => setMode("size")} content="Size" />,
               <PanelControlsButton key="count" active={mode === "count"} onClick={() => setMode("count")} content="Count" />,

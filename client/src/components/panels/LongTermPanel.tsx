@@ -1,19 +1,21 @@
-import { FC, useCallback, useEffect, useMemo, useState } from "react";
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { fetchPayoutPaystubs } from "../../services/apiClient";
+import createRequestDeduper from "../../utils/requestDeduper";
 import useSelectedNodesStore from "../../store/useSelectedNodes";
 import type { PaystubRecord } from "../../types";
 import PanelSubtitle from "../PanelSubtitle";
 import PanelHeader from "../PanelHeader";
-import PanelControls from "../PanelControls";
+import PanelControls, { getStoredSelection } from "../PanelControls";
 import PanelControlsButton from "../PanelControlsButton";
 import { translateSatelliteId } from "../../constants/satellites";
 import { formatSizeValue, pickSizeUnit } from "../../utils/units";
 import type { SizeUnit } from "../../utils/units";
 
 type Mode = "financial" | "data";
+const MODE_VALUES = ["financial", "data"] as const satisfies readonly Mode[];
 type FinancialView = "monthly" | "accumulate";
 type FinancialGrouping = "total" | "kind";
 type DataSeriesMode = "details" | "totals";
@@ -147,15 +149,20 @@ type DiskUsageUnit = SizeUnit;
 
 const LongTermPanel: FC = () => {
   const selectedNodes = useSelectedNodesStore((state) => state.selected);
-  const [mode, setMode] = useState<Mode>("financial");
+  const [mode, setMode] = useState<Mode>(() =>
+    getStoredSelection<Mode>("monstr.panel.LongTermPanel.view", MODE_VALUES, "financial"),
+  );
   const [financialView, setFinancialView] = useState<FinancialView>("monthly");
   const [financialGrouping, setFinancialGrouping] = useState<FinancialGrouping>("total");
   const [dataSeriesMode, setDataSeriesMode] = useState<DataSeriesMode>("details");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const deduperRef = useRef(createRequestDeduper());
   const [periods, setPeriods] = useState<Record<string, PaystubRecord[]>>({});
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
-  const [selectedSatelliteId, setSelectedSatelliteId] = useState<string>("All");
+  const [selectedSatelliteId, setSelectedSatelliteId] = useState<string>(() =>
+    getStoredSelection<string>("monstr.panel.LongTermPanel.satellite", null, "All"),
+  );
 
   const requestNodes = useMemo(() => {
     if (selectedNodes.length === 0 || selectedNodes.includes("All")) {
@@ -201,6 +208,11 @@ const LongTermPanel: FC = () => {
   const refresh = useCallback(async () => {
     setIsLoading(true);
     setError(null);
+    const deduper = deduperRef.current;
+    if (deduper.isDuplicate(requestNodes, 1000)) {
+      setIsLoading(false);
+      return;
+    }
     try {
       const payload = await fetchPayoutPaystubs(requestNodes);
       setPeriods(payload.periods ?? {});
@@ -608,6 +620,7 @@ const LongTermPanel: FC = () => {
           <>
             <PanelControls
               ariaLabel="Satellite filter"
+              storageKey="monstr.panel.LongTermPanel.satellite"
               buttons={satelliteButtonIds.map((satelliteId) => (
                 <PanelControlsButton key={satelliteId} active={selectedSatelliteId === satelliteId} onClick={() => setSelectedSatelliteId(satelliteId)} content={satelliteId === "All" ? "All" : translateSatelliteId(satelliteId)}
                 />
@@ -615,6 +628,7 @@ const LongTermPanel: FC = () => {
             />
             <PanelControls
               ariaLabel="View mode"
+              storageKey="monstr.panel.LongTermPanel.view"
               buttons={[
                 <PanelControlsButton key="financial" active={mode === "financial"} onClick={() => setMode("financial")} content="Financial" />,
                 <PanelControlsButton key="data" active={mode === "data"} onClick={() => setMode("data")} content="Data" />,

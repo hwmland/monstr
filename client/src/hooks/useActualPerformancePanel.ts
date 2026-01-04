@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import createRequestDeduper from "../utils/requestDeduper";
 
 import { fetchActualPerformance } from "../services/apiClient";
 import useSelectedNodesStore from "../store/useSelectedNodes";
@@ -50,6 +51,8 @@ const useTransfersActual = (options: UseTransfersActualOptions = {}): UseTransfe
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
+  const deduperRef = useRef(createRequestDeduper());
+  
 
   const requestNodes = useMemo(() => {
     if (selected.includes("All")) {
@@ -75,7 +78,8 @@ const useTransfersActual = (options: UseTransfersActualOptions = {}): UseTransfe
       setError(null);
 
       try {
-        const response = await fetchActualPerformance(requestNodes);
+        const deduper = deduperRef.current;
+        const response = await deduper.coalesce(requestNodes, () => fetchActualPerformance(requestNodes));
         if (isCurrent) {
           setData(response);
         }

@@ -24,20 +24,22 @@ const SatelliteComponent = ({ satellite, audit }: SatelliteComponentProps) => {
   const iconColor = scoreColor(globalScore);
   const Icon = globalScore !== null && globalScore >= 0.99 ? FaCheckCircle : FaExclamationTriangle;
 
+  const shortUrl = String(satellite.url ?? "").split(".")[0] || String(satellite.url ?? "");
+
   return (
     <div className="dash-sat-card">
       <div className="dash-sat-card__title" style={{ alignItems: "center", gap: "0.45rem", flexDirection: "row", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flex: 1 }}>
           <Icon style={{ color: iconColor, fontSize: "0.7rem" }} />
-          <div className="dash-sat-card__name" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {satellite.url}
+          <div className="dash-sat-card__name" title={satellite.url} style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {shortUrl}
           </div>
         </div>
         <NodeId id={satellite.id} />
       </div>
       <div className="dash-sat-inline">
         <div className="dash-sat-inline__col">
-          <span className="dash-sat-inline__label">Suspension</span>
+          <span className="dash-sat-inline__label">Susp.</span>
           <span className="dash-sat-inline__value" style={{ color: scoreColor(suspensionScore) }}>
             {formatScore(suspensionScore)}
           </span>

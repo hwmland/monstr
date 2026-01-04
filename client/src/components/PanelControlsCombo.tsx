@@ -1,5 +1,5 @@
 import type { FC, MouseEvent as ReactMouseEvent } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 interface PanelControlsComboOption {
   value: string;
@@ -12,6 +12,7 @@ interface PanelControlsComboProps {
   defaultValue?: string;
   onSelect: (value: string) => void;
   ariaLabel?: string;
+  storageKey?: string;
 }
 
 const PanelControlsCombo: FC<PanelControlsComboProps> = ({
@@ -20,6 +21,7 @@ const PanelControlsCombo: FC<PanelControlsComboProps> = ({
   defaultValue,
   onSelect,
   ariaLabel = "Select option",
+  storageKey,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const comboRef = useRef<HTMLDivElement | null>(null);
@@ -55,9 +57,21 @@ const PanelControlsCombo: FC<PanelControlsComboProps> = ({
 
   const isActive = Boolean(activeValue && options.some((opt) => opt.value === activeValue));
 
+  const persistSelection = useCallback((value: string) => {
+    if (!storageKey) {
+      return;
+    }
+    try {
+      localStorage.setItem(storageKey, value);
+    } catch {
+      // ignore storage failures
+    }
+  }, [storageKey]);
+
   const applySelected = () => {
     if (!selectedValue) return;
     onSelect(selectedValue);
+    persistSelection(selectedValue);
     setIsOpen(false);
   };
 
@@ -70,6 +84,7 @@ const PanelControlsCombo: FC<PanelControlsComboProps> = ({
   const handleOptionClick = (value: string) => {
     setSelectedValue(value);
     onSelect(value);
+    persistSelection(value);
     setIsOpen(false);
   };
 

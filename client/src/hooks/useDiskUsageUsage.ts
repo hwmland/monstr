@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { fetchDiskUsageUsage } from "../services/apiClient";
+import createRequestDeduper from "../utils/requestDeduper";
 import type { DiskUsageUsageMode, DiskUsageUsageNode } from "../types";
 
 interface UseDiskUsageUsageOptions {
@@ -32,11 +33,13 @@ const useDiskUsageUsage = ({
       setIsLoading(false);
       return;
     }
+    const deduper = deduperRef.current;
+    const nodeFilter = nodes.includes("All") ? [] : nodes;
+    if (deduper.isDuplicate(nodeFilter, 1000)) return;
 
     setIsLoading(true);
     setError(null);
     try {
-      const nodeFilter = nodes.includes("All") ? [] : nodes;
       const response = await fetchDiskUsageUsage(nodeFilter, intervalDays, mode);
       setPeriods(response.periods);
     } catch (err) {
@@ -45,6 +48,8 @@ const useDiskUsageUsage = ({
       setIsLoading(false);
     }
   }, [enabled, intervalDays, mode, nodes]);
+
+  const deduperRef = useRef(createRequestDeduper());
 
   useEffect(() => {
     if (!enabled) {
