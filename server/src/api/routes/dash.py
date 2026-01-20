@@ -86,4 +86,17 @@ async def dash_node_satellites(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found or nodeapi not configured")
 
     url = _join_url(source.nodeapi, "/api/sno/satellites")
-    return await _fetch_json(url)
+    data = await _fetch_json(url)
+
+    # Some nodeapi implementations may return `null` for list fields.
+    # FastAPI/Pydantic response validation rejects `null` for fields
+    # declared as lists, so normalize `None` -> empty list here.
+    try:
+        if isinstance(data, dict):
+            for key in ("storageDaily", "bandwidthDaily", "audits"):
+                if data.get(key) is None:
+                    data[key] = []
+    except Exception:
+        logger.warning("Failed to normalize node-satellites response", exc_info=True)
+
+    return data
