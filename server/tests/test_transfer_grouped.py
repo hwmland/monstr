@@ -109,6 +109,17 @@ async def test_transfer_totals_endpoint() -> None:
             size_ul_succ_rep=2048,
             count_ul_succ_rep=2,
         ),
+        # size_class='all' counterpart for the granularity=5 row above
+        TransferGroupedCreate(
+            source="node-a",
+            satellite_id="sat-1",
+            interval_start=older_start,
+            interval_end=older_end,
+            size_class="all",
+            granularity=5,
+            size_ul_succ_rep=2048,
+            count_ul_succ_rep=2,
+        ),
         TransferGroupedCreate(
             source="node-a",
             satellite_id="sat-1",
@@ -125,6 +136,17 @@ async def test_transfer_totals_endpoint() -> None:
             interval_start=older_start,
             interval_end=older_end,
             size_class="4K",
+            granularity=5,
+            size_dl_fail_nor=4096,
+            count_dl_fail_nor=4,
+        ),
+        # size_class='all' counterpart for the granularity=5 row above
+        TransferGroupedCreate(
+            source="node-b",
+            satellite_id="sat-2",
+            interval_start=older_start,
+            interval_end=older_end,
+            size_class="all",
             granularity=5,
             size_dl_fail_nor=4096,
             count_dl_fail_nor=4,
