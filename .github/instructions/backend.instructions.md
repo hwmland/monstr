@@ -130,6 +130,20 @@ except (OperationalError, StaleDataError) as exc:
 - **Logging**: Use `from server.src.core.logging import get_logger; logger = get_logger(__name__)`. Never use `print()`.
 - **Async**: All database operations must be async. Use `await session.execute(...)`, never sync equivalents.
 
+## Adding a New Configuration Parameter
+
+When adding a new repeatable CLI/env parameter (like `--source`, `--ip24`, `--disqual`):
+
+1. **Dataclass** — add a frozen `@dataclass` in `config.py` for the parsed result (e.g., `SourceDefinition`, `DisqualDefinition`).
+2. **Settings field** — add `field_name: str | List[str] = []` to the `Settings` class. The `str | List[str]` union prevents pydantic-settings from JSON-decoding simple comma-separated env strings.
+3. **Coercion validator** — add a `@field_validator("field_name", mode="before")` that handles `None`, empty string, comma-separated, newline-separated, JSON array, and Python list/tuple/set inputs. Follow the `_coerce_sources` / `_coerce_ip24` pattern.
+4. **Parsed property** — add a `@property` on `Settings` that parses the raw string list into the structured dataclass. Validate format and raise `ValueError` on invalid input.
+5. **CLI argument** — add `parser.add_argument("--flag", dest="field_name", action="append", default=[], help="…")` in `cli.py`.
+6. **Build settings override** — in `build_settings()`, add: `if getattr(args, "field_name", None): overrides["field_name"] = args.field_name`.
+7. **Tests** — add coercion tests (comma, newline, list, JSON, empty, None) and parsing tests (valid, invalid, edge cases) in `server/tests/`.
+
+The env var is automatically available as `MONSTR_FIELD_NAME` (upper-cased, `MONSTR_` prefix).
+
 ## Adding a New Feature Checklist
 
 1. **Model** — add/modify SQLModel class in `models.py` if schema changes.
