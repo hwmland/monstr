@@ -145,36 +145,7 @@ async def transfer_totals(
     start = now - interval_delta
 
     repository = TransferGroupedRepository(session)
-    rows = await repository.collect_interval_rows(payload.nodes or None, start, now)
-
-    metric_fields = (
-        "size_dl_succ_nor",
-        "size_ul_succ_nor",
-        "size_dl_fail_nor",
-        "size_ul_fail_nor",
-        "size_dl_succ_rep",
-        "size_ul_succ_rep",
-        "size_dl_fail_rep",
-        "size_ul_fail_rep",
-        "count_dl_succ_nor",
-        "count_ul_succ_nor",
-        "count_dl_fail_nor",
-        "count_ul_fail_nor",
-        "count_dl_succ_rep",
-        "count_ul_succ_rep",
-        "count_dl_fail_rep",
-        "count_ul_fail_rep",
-    )
-
-    totals: dict[str, dict[str, int]] = {}
-
-    for row in rows:
-        node = row.source or ""
-        if node not in totals:
-            totals[node] = {field: 0 for field in metric_fields}
-        node_totals = totals[node]
-        for field in metric_fields:
-            node_totals[field] += int(getattr(row, field, 0) or 0)
+    totals = await repository.collect_totals_by_source(payload.nodes or None, start, now)
 
     response_totals = {
         node: TransferTotalsNode(**values)
@@ -195,14 +166,13 @@ async def interval_transfers(
 ) -> IntervalTransferResponse:
     """Return transfer aggregates bucketed into arbitrary interval lengths.
 
-    This mirrors the hourly endpoint but uses the requested interval length and number of intervals.
-    The same algorithm is used: read granularity=5 from start_time, then granularity=1 from gran5_end,
-    then raw Transfer rows since gran1_end. Bucket all rows by interval_length boundaries and sum counters.
-    The response reuses IntervalTransferResponse/IntervalTransferBucket models (bucketStart/bucketEnd and counters).
+    Uses SQL-side SUM + GROUP BY to push aggregation to the database,
+    returning only the bucketed results instead of individual rows.
     """
     now = datetime.now(timezone.utc)
 
     interval = parse_interval_length(payload.interval_length)
+    bucket_seconds = int(interval.total_seconds())
 
     # compute nominal start and round down to interval boundary
     intervals = payload.number_of_intervals - 1 # because of rounding down I need to decrease number or intervals.
@@ -211,92 +181,37 @@ async def interval_transfers(
 
     repository = TransferGroupedRepository(session)
 
-    all_rows = await repository.collect_interval_rows(payload.nodes or None, rounded_start, now)
+    raw_buckets, _ = await repository.collect_interval_buckets(
+        payload.nodes or None, rounded_start, now, bucket_seconds,
+    )
 
-    # Prepare buckets (start from rounded_start up to now), bucket boundaries are interval-sized
-    buckets: dict[datetime, dict[str, int]] = {}
-
-    # helper to get bucket start for a datetime given interval
-    def bucket_start_for_interval(dt: datetime) -> datetime:
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        else:
-            dt = dt.astimezone(timezone.utc)
-        return round_down_to_interval(dt, interval)
-
-    # Initialize buckets for each interval boundary from rounded_start up to now
+    # Build response buckets aligned to interval boundaries
+    bucket_items: list[IntervalTransferBucket] = []
     cur = rounded_start
     while cur < now:
-        buckets[cur] = {
-            'size_dl_succ_nor': 0,
-            'size_ul_succ_nor': 0,
-            'size_dl_fail_nor': 0,
-            'size_ul_fail_nor': 0,
-            'size_dl_succ_rep': 0,
-            'size_ul_succ_rep': 0,
-            'size_dl_fail_rep': 0,
-            'size_ul_fail_rep': 0,
-            'count_dl_succ_nor': 0,
-            'count_ul_succ_nor': 0,
-            'count_dl_fail_nor': 0,
-            'count_ul_fail_nor': 0,
-            'count_dl_succ_rep': 0,
-            'count_ul_succ_rep': 0,
-            'count_dl_fail_rep': 0,
-            'count_ul_fail_rep': 0,
-        }
-        cur = cur + interval
-
-    # Aggregate rows into buckets by their interval_start
-    for r in all_rows:
-        bs = bucket_start_for_interval(r.interval_start)
-        if bs < rounded_start:
-            continue
-        if bs not in buckets:
-            # allow rows that are exactly at 'now' to be clipped into last bucket
-            prev_bs = round_down_to_interval(r.interval_start - interval, interval)
-            if prev_bs in buckets:
-                bs = prev_bs
-            else:
-                continue
-
-        b = buckets[bs]
-        b['size_dl_succ_nor'] += int(r.size_dl_succ_nor or 0)
-        b['size_ul_succ_nor'] += int(r.size_ul_succ_nor or 0)
-        b['size_dl_fail_nor'] += int(r.size_dl_fail_nor or 0)
-        b['size_ul_fail_nor'] += int(r.size_ul_fail_nor or 0)
-        b['size_dl_succ_rep'] += int(r.size_dl_succ_rep or 0)
-        b['size_ul_succ_rep'] += int(r.size_ul_succ_rep or 0)
-        b['size_dl_fail_rep'] += int(r.size_dl_fail_rep or 0)
-        b['size_ul_fail_rep'] += int(r.size_ul_fail_rep or 0)
-
-        b['count_dl_succ_nor'] += int(r.count_dl_succ_nor or 0)
-        b['count_ul_succ_nor'] += int(r.count_ul_succ_nor or 0)
-        b['count_dl_fail_nor'] += int(r.count_dl_fail_nor or 0)
-        b['count_ul_fail_nor'] += int(r.count_ul_fail_nor or 0)
-        b['count_dl_succ_rep'] += int(r.count_dl_succ_rep or 0)
-        b['count_ul_succ_rep'] += int(r.count_ul_succ_rep or 0)
-        b['count_dl_fail_rep'] += int(r.count_dl_fail_rep or 0)
-        b['count_ul_fail_rep'] += int(r.count_ul_fail_rep or 0)
-
-    # Build response buckets list in ascending order
-    bucket_items: list[IntervalTransferBucket] = []
-    sorted_starts = sorted(buckets.keys())
-    for i, start in enumerate(sorted_starts):
-        end = start + interval
-        # Clip last bucket end to now
+        bucket_ts = int(cur.timestamp())
+        vals = raw_buckets.get(bucket_ts, {})
+        end = cur + interval
         if end > now:
             end = now
-        vals = buckets[start]
         bucket_items.append(
             IntervalTransferBucket(
-                bucket_start=start,
+                bucket_start=cur,
                 bucket_end=end,
-                **vals,
+                **{k: vals.get(k, 0) for k in (
+                    'size_dl_succ_nor', 'size_ul_succ_nor',
+                    'size_dl_fail_nor', 'size_ul_fail_nor',
+                    'size_dl_succ_rep', 'size_ul_succ_rep',
+                    'size_dl_fail_rep', 'size_ul_fail_rep',
+                    'count_dl_succ_nor', 'count_ul_succ_nor',
+                    'count_dl_fail_nor', 'count_ul_fail_nor',
+                    'count_dl_succ_rep', 'count_ul_succ_rep',
+                    'count_dl_fail_rep', 'count_ul_fail_rep',
+                )},
             )
         )
+        cur = cur + interval
 
-    resp_start = rounded_start
-    resp_end = now
-
-    return IntervalTransferResponse(start_time=resp_start, end_time=resp_end, buckets=bucket_items)
+    return IntervalTransferResponse(
+        start_time=rounded_start, end_time=now, buckets=bucket_items,
+    )

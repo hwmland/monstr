@@ -198,6 +198,65 @@ def _migrate_7_to_8(conn: Connection) -> None:
     logger.info("Completed migration 7 -> 8")
 
 
+def _migrate_8_to_9(conn: Connection) -> None:
+    """Add composite index and backfill size_class='all' for granularities > 1."""
+    logger.info("Starting migration 8 -> 9: composite index + backfill size_class='all'")
+
+    inspector = inspect(conn)
+    table_name = models.TransferGrouped.__table__.name
+    if not inspector.has_table(table_name):
+        logger.info("Skipping migration: table %s does not exist", table_name)
+        return
+
+    # Drop individual indexes that are now superseded by the composite index.
+    for old_index in (
+        f"ix_{table_name}_interval_start",
+        f"ix_{table_name}_interval_end",
+        f"ix_{table_name}_granularity",
+    ):
+        conn.execute(text(f'DROP INDEX IF EXISTS "{old_index}"'))
+        logger.info("Dropped index %s (if it existed)", old_index)
+
+    # Create composite index covering the primary query pattern:
+    # WHERE granularity=? AND size_class=? AND interval_start >= ? AND interval_end <= ?
+    composite_name = f"ix_{table_name}_gran_sc_start_end"
+    conn.execute(
+        text(
+            f'CREATE INDEX IF NOT EXISTS "{composite_name}" ON "{table_name}" '
+            f'("granularity", "size_class", "interval_start", "interval_end")'
+        )
+    )
+    logger.info("Created composite index %s", composite_name)
+
+    # Backfill size_class='all' for granularities > 1 by aggregating existing rows.
+    metric_cols = (
+        "size_dl_succ_nor", "size_ul_succ_nor", "size_dl_fail_nor", "size_ul_fail_nor",
+        "size_dl_succ_rep", "size_ul_succ_rep", "size_dl_fail_rep", "size_ul_fail_rep",
+        "count_dl_succ_nor", "count_ul_succ_nor", "count_dl_fail_nor", "count_ul_fail_nor",
+        "count_dl_succ_rep", "count_ul_succ_rep", "count_dl_fail_rep", "count_ul_fail_rep",
+    )
+
+    sum_clauses = ", ".join(f'SUM("{c}")' for c in metric_cols)
+    insert_cols = ", ".join(
+        ['"source"', '"satellite_id"', '"interval_start"', '"interval_end"',
+         '"size_class"', '"granularity"']
+        + [f'"{c}"' for c in metric_cols]
+    )
+
+    backfill_sql = (
+        f'INSERT INTO "{table_name}" ({insert_cols}) '
+        f'SELECT "source", "satellite_id", "interval_start", "interval_end", '
+        f"'all', \"granularity\", {sum_clauses} "
+        f'FROM "{table_name}" '
+        f'WHERE "granularity" > 1 AND "size_class" != \'all\' '
+        f'GROUP BY "source", "satellite_id", "interval_start", "interval_end", "granularity"'
+    )
+    result = conn.execute(text(backfill_sql))
+    backfill_count = getattr(result, "rowcount", 0) or 0
+    logger.info("Backfilled %d size_class='all' rows for granularities > 1", backfill_count)
+
+    logger.info("Completed migration 8 -> 9")
+
 
 MigrationFunc = type(_migrate_0_to_1)
 
@@ -210,6 +269,7 @@ MIGRATIONS = (
     _migrate_5_to_6,
     _migrate_6_to_7,
     _migrate_7_to_8,
+    _migrate_8_to_9,
 )
 LATEST_SCHEMA_VERSION = len(MIGRATIONS)
 

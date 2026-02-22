@@ -15,6 +15,7 @@ from ..models import Transfer, TransferGrouped
 from ..repositories.transfers import TransferRepository
 from ..repositories.transfer_grouped import TransferGroupedRepository
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm.exc import StaleDataError
 
 logger = get_logger(__name__)
 
@@ -284,7 +285,7 @@ class TransferGroupingService:
             await grouped_repo._session.flush()
             flush_t1 = time.perf_counter()
             logger.debug("_process_batch: flush completed in %.2fms", (flush_t1 - flush_t0) * 1000.0)
-        except OperationalError as exc:
+        except (OperationalError, StaleDataError) as exc:
             logger.warning("_process_batch: flush failed due to DB error; aborting this cycle: %s", exc)
             try:
                 await grouped_repo._session.rollback()
@@ -297,7 +298,7 @@ class TransferGroupingService:
             await grouped_repo._session.commit()
             commit_t1 = time.perf_counter()
             logger.debug("_process_batch: commit completed in %.2fms", (commit_t1 - commit_t0) * 1000.0)
-        except OperationalError as exc:
+        except (OperationalError, StaleDataError) as exc:
             logger.warning("_process_batch: commit failed due to DB error; rolling back and aborting this cycle: %s", exc)
             try:
                 await grouped_repo._session.rollback()
@@ -447,6 +448,34 @@ class TransferGroupingService:
                 )
                 created.append(tg)
 
+            # Emit an additional size_class='all' row summing across all size classes.
+            # Skip rows that are already 'all' to avoid double-counting when
+            # re-promoting data that already contains aggregated 'all' entries.
+            non_all_buckets = {sc: v for sc, v in size_buckets.items() if sc != 'all'}
+            if non_all_buckets:
+                all_agg: dict[str, int] = {
+                    'size_dl_succ_nor': 0, 'size_ul_succ_nor': 0,
+                    'size_dl_fail_nor': 0, 'size_ul_fail_nor': 0,
+                    'size_dl_succ_rep': 0, 'size_ul_succ_rep': 0,
+                    'size_dl_fail_rep': 0, 'size_ul_fail_rep': 0,
+                    'count_dl_succ_nor': 0, 'count_ul_succ_nor': 0,
+                    'count_dl_fail_nor': 0, 'count_ul_fail_nor': 0,
+                    'count_dl_succ_rep': 0, 'count_ul_succ_rep': 0,
+                    'count_dl_fail_rep': 0, 'count_ul_fail_rep': 0,
+                }
+                for sc_agg in non_all_buckets.values():
+                    for k in all_agg:
+                        all_agg[k] += sc_agg[k]
+                created.append(TransferGrouped(
+                    source=source,
+                    satellite_id=satellite_id,
+                    interval_start=interval_start,
+                    interval_end=interval_start + to_delta,
+                    size_class='all',
+                    granularity=to_gran,
+                    **all_agg,
+                ))
+
         proc_t1 = time.perf_counter()
         logger.debug(
             "_promote_groups: processing (aggregate) completed in %.2fms",
@@ -479,7 +508,7 @@ class TransferGroupingService:
             await grouped_repo._session.flush()
             flush_t1 = time.perf_counter()
             logger.debug("_promote_groups: flush completed in %.2fms", (flush_t1 - flush_t0) * 1000.0)
-        except OperationalError as exc:
+        except (OperationalError, StaleDataError) as exc:
             logger.warning("_promote_groups: flush failed due to DB error; aborting promotion: %s", exc)
             try:
                 await grouped_repo._session.rollback()
@@ -492,7 +521,7 @@ class TransferGroupingService:
             await grouped_repo._session.commit()
             commit_t1 = time.perf_counter()
             logger.debug("_promote_groups: commit completed in %.2fms", (commit_t1 - commit_t0) * 1000.0)
-        except OperationalError as exc:
+        except (OperationalError, StaleDataError) as exc:
             logger.warning("_promote_groups: commit failed due to DB error; rolling back and aborting promotion: %s", exc)
             try:
                 await grouped_repo._session.rollback()

@@ -404,8 +404,19 @@ class PayoutPaystubsRequest(BaseModel):
     nodes: list[str] = Field(default_factory=list, description="Nodes to include; empty means all nodes")
 
 
+class DisqualEntry(BaseModel):
+    """A disqualification event for a node/satellite at a billing period."""
+
+    node: str
+    satellite_id: str = Field(default="", serialization_alias="satelliteId")
+    period: str
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class PayoutPaystubsResponse(BaseModel):
     periods: dict[str, list[PaystubRead]] = Field(default_factory=dict)
+    disqualifications: list[DisqualEntry] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 

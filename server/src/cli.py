@@ -71,6 +71,17 @@ def parse_args() -> argparse.Namespace:
             "Repeatable."
         ),
     )
+    parser.add_argument(
+        "--disqual",
+        dest="disqual",
+        action="append",
+        default=[],
+        help=(
+            "Declare a disqualification event in the form SOURCE:SATELLITE_ID:PERIOD "
+            "(e.g. Node1:1wFTAgs9DP5RSnCqKV1eLf6N9wtk4EAtmN5DpSxcs8EjT69tGE:2025-06 or "
+            "Node1::2025-06 for all satellites). PERIOD is yyyy-mm. Repeatable."
+        ),
+    )
     # Deprecated separate --node / --remote flags removed in favor of --source
     parser.add_argument("--host", dest="host", help="API host binding override")
     parser.add_argument("--port", dest="port", type=int, help="API port binding override")
@@ -95,6 +106,8 @@ def build_settings(args: argparse.Namespace) -> Settings:
         overrides["sources"] = args.sources
     if getattr(args, "ip24", None):
         overrides["ip24"] = args.ip24
+    if getattr(args, "disqual", None):
+        overrides["disqual"] = args.disqual
     if args.host:
         overrides["api_host"] = args.host
     if args.port:

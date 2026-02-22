@@ -4,6 +4,7 @@ import { translateSatelliteId } from "../constants/satellites";
 import type {
   NodeInfo,
   NodeReputation,
+  DisqualEntry,
   PaystubPeriodsResponse,
   PaystubRecord,
   SatelliteReputation,
@@ -267,7 +268,27 @@ export const fetchPayoutPaystubs = async (nodes: string[]): Promise<PaystubPerio
     }
   }
 
-  return { periods };
+  const disqualifications: DisqualEntry[] = [];
+  const rawDisquals =
+    raw && typeof raw === "object" && raw !== null && "disqualifications" in raw
+      ? ((raw as { disqualifications?: unknown }).disqualifications ?? [])
+      : [];
+
+  if (Array.isArray(rawDisquals)) {
+    for (const entry of rawDisquals) {
+      if (!entry || typeof entry !== "object") {
+        continue;
+      }
+      const item = entry as Record<string, unknown>;
+      disqualifications.push({
+        node: String(item.node ?? ""),
+        satelliteId: String(item.satelliteId ?? item.satellite_id ?? ""),
+        period: String(item.period ?? ""),
+      });
+    }
+  }
+
+  return { periods, disqualifications };
 };
 
 export const fetchIntervalTransfers = async (nodes: string[], intervalLength: string, numberOfIntervals: number) => {
