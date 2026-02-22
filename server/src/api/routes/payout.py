@@ -14,6 +14,7 @@ from ...schemas import (
     PayoutPaystubsRequest,
     PayoutPaystubsResponse,
     PaystubRead,
+    DisqualEntry,
 )
 
 router = APIRouter(prefix="/api/payout", tags=["payout"])
@@ -68,7 +69,7 @@ async def current_payouts(req: PayoutCurrentRequest, request: Request) -> Payout
 
 
 @router.post("/paystubs", response_model=PayoutPaystubsResponse)
-async def paystub_history(req: PayoutPaystubsRequest) -> PayoutPaystubsResponse:
+async def paystub_history(req: PayoutPaystubsRequest, request: Request) -> PayoutPaystubsResponse:
     stmt = select(Paystub)
     if req.nodes:
         stmt = stmt.where(Paystub.source.in_(req.nodes))
@@ -84,4 +85,15 @@ async def paystub_history(req: PayoutPaystubsRequest) -> PayoutPaystubsResponse:
         bucket = periods.setdefault(record.period, [])
         bucket.append(PaystubRead.model_validate(record))
 
-    return PayoutPaystubsResponse(periods=periods)
+    # Attach disqualification declarations from configuration, filtered to
+    # match the requested nodes (or all nodes when no filter was provided).
+    settings = get_settings(request)
+    disqualifications: list[DisqualEntry] = []
+    for dq in settings.parsed_disqual:
+        if req.nodes and dq.source not in req.nodes:
+            continue
+        disqualifications.append(
+            DisqualEntry(node=dq.source, satellite_id=dq.satellite_id, period=dq.period)
+        )
+
+    return PayoutPaystubsResponse(periods=periods, disqualifications=disqualifications)

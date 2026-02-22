@@ -5,7 +5,7 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { fetchPayoutPaystubs } from "../../services/apiClient";
 import createRequestDeduper from "../../utils/requestDeduper";
 import useSelectedNodesStore from "../../store/useSelectedNodes";
-import type { PaystubRecord } from "../../types";
+import type { DisqualEntry, PaystubRecord } from "../../types";
 import PanelSubtitle from "../PanelSubtitle";
 import PanelHeader from "../PanelHeader";
 import PanelControls, { getStoredSelection } from "../PanelControls";
@@ -159,6 +159,7 @@ const LongTermPanel: FC = () => {
   const [error, setError] = useState<string | null>(null);
   const deduperRef = useRef(createRequestDeduper());
   const [periods, setPeriods] = useState<Record<string, PaystubRecord[]>>({});
+  const [disqualifications, setDisqualifications] = useState<DisqualEntry[]>([]);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [selectedSatelliteId, setSelectedSatelliteId] = useState<string>(() =>
     getStoredSelection<string>("monstr.panel.LongTermPanel.satellite", null, "All"),
@@ -216,11 +217,13 @@ const LongTermPanel: FC = () => {
     try {
       const payload = await fetchPayoutPaystubs(requestNodes);
       setPeriods(payload.periods ?? {});
+      setDisqualifications(payload.disqualifications ?? []);
       setLastUpdated(new Date().toISOString());
     } catch (err) {
       console.warn("Failed to load paystub history", err);
       setError("Failed to load paystub history. Please try again.");
       setPeriods({});
+      setDisqualifications([]);
     } finally {
       setIsLoading(false);
     }
@@ -251,13 +254,97 @@ const LongTermPanel: FC = () => {
       .sort((a, b) => a.period.localeCompare(b.period));
   }, [filteredPeriods]);
 
+  /**
+   * For a given period and its records, return the set of source keys whose
+   * accumulated held amount should be reset due to a disqualification.
+   * A DQ with empty satelliteId means "all satellites" for that node.
+   */
+  const getDisqualSources = useCallback(
+    (period: string, periodRecords: PaystubRecord[]): Set<string> => {
+      const resetKeys = new Set<string>();
+      if (disqualifications.length === 0) {
+        return resetKeys;
+      }
+
+      const sourcesInPeriod = new Set(periodRecords.map((r) => r.source));
+
+      for (const dq of disqualifications) {
+        if (dq.period !== period) {
+          continue;
+        }
+        if (sourcesInPeriod.size > 0 && !sourcesInPeriod.has(dq.node)) {
+          continue;
+        }
+        // Satellite matching
+        if (selectedSatelliteId === "All") {
+          // When viewing all satellites, only a blanket DQ (empty
+          // satelliteId) resets the held amount for that node.
+          if (dq.satelliteId === "") {
+            resetKeys.add(dq.node);
+          }
+        } else {
+          if (dq.satelliteId === "" || dq.satelliteId === selectedSatelliteId) {
+            resetKeys.add(dq.node);
+          }
+        }
+      }
+      return resetKeys;
+    },
+    [disqualifications, selectedSatelliteId],
+  );
+
+  /**
+   * Compute accumulated held per-source so that disqualifications only reset
+   * the held amount for the affected node, not all nodes.
+   */
+  const accumulateHeldPerSource = useCallback(
+    (sortedPeriods: string[]): { heldByPeriod: Record<string, number>; finalHeld: number } => {
+      const runningHeldBySource: Record<string, number> = {};
+      const heldByPeriod: Record<string, number> = {};
+
+      for (const period of sortedPeriods) {
+        const records = filteredPeriods[period] ?? [];
+
+        // Determine which sources are reset this period
+        const resetSources = getDisqualSources(period, records);
+
+        // Reset matching sources
+        for (const key of resetSources) {
+          runningHeldBySource[key] = 0;
+        }
+
+        // Accumulate held per source for this period
+        for (const record of records) {
+          const key = record.source;
+          runningHeldBySource[key] = (runningHeldBySource[key] ?? 0) + (record.held ?? 0);
+        }
+
+        // Sum all sources for the period total
+        let periodHeld = 0;
+        for (const v of Object.values(runningHeldBySource)) {
+          periodHeld += v;
+        }
+        heldByPeriod[period] = periodHeld;
+      }
+
+      let finalHeld = 0;
+      for (const v of Object.values(runningHeldBySource)) {
+        finalHeld += v;
+      }
+      return { heldByPeriod, finalHeld };
+    },
+    [filteredPeriods, getDisqualSources],
+  );
+
   const financialChartData = useMemo(() => {
     if (financialView === "monthly") {
       return chartData;
     }
 
+    const sortedPeriods = chartData.map((p) => p.period);
+    const { heldByPeriod } = accumulateHeldPerSource(sortedPeriods);
+
     let runningOwed = 0;
-    let runningHeld = 0;
     let runningDistributed = 0;
     let runningDisk = 0;
     let runningDownload = 0;
@@ -266,7 +353,6 @@ const LongTermPanel: FC = () => {
 
     return chartData.map((point) => {
       runningOwed += point.owed;
-      runningHeld += point.held;
       runningDistributed += point.distributed;
       runningDisk += point.disk;
       runningDownload += point.download;
@@ -277,7 +363,7 @@ const LongTermPanel: FC = () => {
       return {
         period: point.period,
         owed: runningOwed,
-        held: runningHeld,
+        held: heldByPeriod[point.period] ?? 0,
         distributed: runningDistributed,
         disk: runningDisk,
         download: runningDownload,
@@ -286,14 +372,18 @@ const LongTermPanel: FC = () => {
         total: runningTotal,
       } satisfies ChartPoint;
     });
-  }, [chartData, financialView]);
+  }, [chartData, financialView, accumulateHeldPerSource]);
 
   const aggregateTotals = useMemo(
-    () =>
-      chartData.reduce(
+    () => {
+      // Compute DQ-aware total held using per-source accumulation so that
+      // a disqualification only resets the affected node's held amount.
+      const sortedPeriods = chartData.map((p) => p.period);
+      const { finalHeld } = accumulateHeldPerSource(sortedPeriods);
+
+      const base = chartData.reduce(
         (acc, point) => {
           acc.owed += point.owed;
-          acc.held += point.held;
           acc.distributed += point.distributed;
           acc.disk += point.disk;
           acc.download += point.download;
@@ -303,8 +393,11 @@ const LongTermPanel: FC = () => {
           return acc;
         },
         { owed: 0, held: 0, distributed: 0, disk: 0, download: 0, repair: 0, downloadTotal: 0, total: 0 },
-      ),
-    [chartData],
+      );
+      base.held = finalHeld;
+      return base;
+    },
+    [chartData, accumulateHeldPerSource],
   );
 
   const rawUsage = useMemo<RawUsagePoint[]>(() => {

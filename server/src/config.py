@@ -23,6 +23,19 @@ class IP24Definition:
     expected_instances: int
 
 
+@dataclass(frozen=True)
+class DisqualDefinition:
+    """A configured disqualification event for a node/satellite at a period.
+
+    An empty ``satellite_id`` means "all satellites" for that source.
+    ``period`` is in ``yyyy-mm`` format.
+    """
+
+    source: str
+    satellite_id: str
+    period: str
+
+
 class Settings(BaseSettings):
     """Application configuration sourced from environment variables or overrides."""
 
@@ -46,6 +59,11 @@ class Settings(BaseSettings):
     # Expected node instances per IP (string entries like "1.2.3.4:2" or
     # "node.example.com:3"). Allow multiple or none; JSON list accepted via env.
     ip24: str | List[str] = []
+    # Disqualification declarations.  Each entry is SOURCE:SATELLITE_ID:PERIOD
+    # where SATELLITE_ID may be empty (meaning all satellites) and PERIOD is
+    # yyyy-mm.  Example: "Node1::2025-06" or "Node1:1wFTAgs...@:2025-06".
+    # Accepts comma/newline separated strings, JSON arrays, or a Python list.
+    disqual: str | List[str] = []
     log_batch_size: int = 32
     nodeapi_poll_interval_seconds: int = 60
     # Interval (seconds) after which the estimated-payout endpoint should be
@@ -112,6 +130,27 @@ class Settings(BaseSettings):
     @classmethod
     def _coerce_ip24(cls, value):
         """Allow comma/newline separated or JSON list env strings for ip24."""
+        if value in (None, ""):
+            return []
+        if isinstance(value, str):
+            v = value.strip()
+            if v.startswith("[") or v.startswith("{"):
+                try:
+                    decoded = json.loads(v)
+                    if isinstance(decoded, (list, tuple, set)):
+                        return [str(item).strip() for item in decoded if str(item).strip()]
+                except Exception:
+                    pass
+            cleaned = value.replace("\n", ",")
+            return [item.strip() for item in cleaned.split(",") if item.strip()]
+        if isinstance(value, (tuple, set, list)):
+            return [str(item).strip() for item in value if str(item).strip()]
+        return value
+
+    @field_validator("disqual", mode="before")
+    @classmethod
+    def _coerce_disqual(cls, value):
+        """Allow comma/newline separated or JSON list env strings for disqual."""
         if value in (None, ""):
             return []
         if isinstance(value, str):
@@ -225,6 +264,45 @@ class Settings(BaseSettings):
             if expected < 0:
                 raise ValueError(f"Invalid ip24 instances value in '{entry}'; must be non-negative")
             parsed.append(IP24Definition(ip=ip_part, expected_instances=expected))
+        return parsed
+
+    @property
+    def parsed_disqual(self) -> List[DisqualDefinition]:
+        """Return structured disqualification definitions parsed from ``disqual``.
+
+        Each raw entry has the form ``SOURCE:SATELLITE_ID:PERIOD`` where
+        ``SATELLITE_ID`` may be empty (meaning *all* satellites for that
+        source) and ``PERIOD`` is ``yyyy-mm``.
+        """
+        import re
+
+        period_re = re.compile(r"^\d{4}-\d{2}$")
+        parsed: List[DisqualDefinition] = []
+        for raw in self.disqual or []:
+            entry = str(raw).strip()
+            if not entry:
+                continue
+            parts = entry.split(":")
+            if len(parts) < 3:
+                raise ValueError(
+                    f"Invalid disqual declaration '{entry}'; "
+                    "expected SOURCE:SATELLITE_ID:PERIOD (satellite_id may be empty)"
+                )
+            source = parts[0].strip()
+            # Everything except the first and last segment constitutes
+            # the satellite_id (which itself may contain ':'
+            # characters in base58-encoded Storj IDs).
+            period = parts[-1].strip()
+            satellite_id = ":".join(parts[1:-1]).strip()
+            if not source:
+                raise ValueError(f"Disqual entry '{entry}' is missing a source name")
+            if not period_re.match(period):
+                raise ValueError(
+                    f"Invalid disqual period '{period}' in '{entry}'; expected yyyy-mm"
+                )
+            parsed.append(
+                DisqualDefinition(source=source, satellite_id=satellite_id, period=period)
+            )
         return parsed
 
     @staticmethod

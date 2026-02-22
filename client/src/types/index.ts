@@ -91,8 +91,15 @@ export interface PaystubRecord {
   distributed: number;
 }
 
+export interface DisqualEntry {
+  node: string;
+  satelliteId: string;
+  period: string;
+}
+
 export interface PaystubPeriodsResponse {
   periods: Record<string, PaystubRecord[]>;
+  disqualifications?: DisqualEntry[];
 }
 
 export interface TransferTotalsNode {
