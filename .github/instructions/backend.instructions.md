@@ -104,6 +104,103 @@ except (OperationalError, StaleDataError) as exc:
 
 `StaleDataError` occurs when another service (e.g., Cleanup) deletes rows between SELECT and UPDATE in the same cycle.
 
+## Log Parsing & External Data Formats
+
+### Storj Node Logs
+
+- **Location**: Parsed in `services/log_monitor.py`
+- **Format**: Tab-separated: `TIMESTAMP\tLEVEL\tAREA\tACTION\tJSON_DETAILS`
+- **JSON field names**: Storj changed from Title Case (`"Piece ID"`, `"Satellite ID"`) to snake_case (`"piece_id"`, `"satellite_id"`) around early 2026. **Support both formats** using the `_normalize_details()` helper.
+- **Key parsing methods**:
+  - `_process_piecestore_transfer()` — parses download/upload events
+  - `_process_reputation_service()` — parses reputation score updates
+- **Normalization**: The `_normalize_details()` static method converts new snake_case keys to legacy Title Case format internally, keeping the rest of the processing logic unchanged.
+- **When modifying parsers**: Always add tests for both old and new formats. See `test_log_monitor.py` for examples.
+
+**Field name mapping (new → old)**:
+
+| snake_case (new)    | Title Case (old/canonical) |
+| ------------------- | -------------------------- |
+| `piece_id`          | `Piece ID`                 |
+| `satellite_id`      | `Satellite ID`             |
+| `action`            | `Action`                   |
+| `size`              | `Size`                     |
+| `offset`            | `Offset`                   |
+| `remote_address`    | `Remote Address`           |
+| `process`           | `Process`                  |
+| `total_audits`      | `Total Audits`             |
+| `successful_audits` | `Successful Audits`        |
+| `audit_score`       | `Audit Score`              |
+| `online_score`      | `Online Score`             |
+| `suspension_score`  | `Suspension Score`         |
+
+### Storj Node API
+
+- **Location**: Consumed in `services/node_api.py`
+- **Format**: REST API returning camelCase JSON (`satelliteId`, `usageAtRest`, etc.)
+- **Not affected by log format changes** — this is a separate data source with stable formatting
+- **Endpoints polled**: `/api/sno/satellites`, `/api/sno/estimated-payout`, etc.
+
+### Test Data Samples
+
+- **Location**: `testdata/` directory in repo root
+- **Files**: `blob.log-*`, `hash.log-*` — real Storj log samples (anonymized)
+- **Usage**: Use these files to test parser changes and validate against realistic data
+- **Format variations**: May contain both old and new format logs; parser must handle both
+
+## Common Modification Patterns
+
+### Supporting Multiple Versions of External Formats
+
+When external data sources (logs, APIs) change format:
+
+1. **Add a normalization layer** — Create a helper method (e.g., `_normalize_details()`) that converts all format variations to a canonical format.
+2. **Keep existing logic using canonical format** — Minimize the diff by normalizing input early, then keeping all downstream processing unchanged.
+3. **Test both old and new formats separately** — Add dedicated tests for each format version to ensure backward compatibility.
+4. **Document the format change** — Add comments explaining what changed and when, plus update the instruction files.
+5. **Use fast-path optimization** — Check if normalization is needed before doing expensive transformations.
+
+**Example pattern** (from `log_monitor.py`):
+
+```python
+# Module-level mapping constant
+_SNAKE_TO_TITLE = {
+    "piece_id": "Piece ID",
+    "satellite_id": "Satellite ID",
+    # ... more mappings
+}
+
+@staticmethod
+def _normalize_details(details: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize snake_case to Title Case for backward compatibility."""
+    # Fast path: skip if no snake_case keys present
+    if not any(key in details for key in _SNAKE_TO_TITLE):
+        return details
+
+    # Remap snake_case keys
+    normalized = {}
+    for key, value in details.items():
+        normalized_key = _SNAKE_TO_TITLE.get(key, key)
+        normalized[normalized_key] = value
+    return normalized
+
+# Use in processing methods
+def _process_something(self, payload: Dict[str, Any]):
+    details_raw = payload.get("details") or {}
+    details = self._normalize_details(details_raw)  # ← normalize once
+    # Rest of method uses canonical format unchanged
+    piece_id = details.get("Piece ID")
+    ...
+```
+
+### Adding New Log Event Types
+
+1. **Identify the area:action** — check raw logs for the exact `AREA` and `ACTION` values
+2. **Add to `_process_payload()` dispatcher** — route to appropriate handler method
+3. **Create handler method** — follow naming pattern `_process_{area}_{action}_payload()`
+4. **Return appropriate tuple** — `(log_payload, transfer_payload, reputation_payload)` with `None` for unused
+5. **Add tests** — minimal test in `test_log_monitor.py` checking the event is not marked as unprocessed
+
 ## Testing Patterns
 
 - Each test gets an **isolated SQLite database** via the `isolated_database` fixture in `conftest.py`.
@@ -120,6 +217,48 @@ except (OperationalError, StaleDataError) as exc:
   ```
 - Test data is inserted via repositories within `async with database.SessionFactory() as session:`.
 - Performance/integration tests against the real database (`pokus.db`) should be decorated with `@pytest.mark.skipif` if the file is absent.
+- **Test file naming**: `test_<module_name>.py` mirrors source structure (`services/log_monitor.py` → `tests/test_log_monitor.py`)
+- **Run full suite after changes**: `python -m pytest -q server/tests` (from repo root)
+
+### Parser Testing Best Practices
+
+When modifying parsing logic (`log_monitor`, format normalization, etc.):
+
+- **Test both valid and invalid inputs** — ensure errors are handled gracefully
+- **Test edge cases** — missing fields, wrong types, empty strings, null values
+- **For external formats that may change**: Test multiple format versions separately (old vs. new)
+- **Add unit tests for normalization helpers** — test pass-through and transformation cases
+- **Integration tests use realistic sample data** — use snippets from `testdata/` logs when possible
+- **Verify unprocessed handling** — check that malformed data is properly logged to unprocessed files
+
+**Example test structure** for format variations:
+
+```python
+@pytest.mark.asyncio
+async def test_parser_old_format(tmp_path):
+    # Test with Title Case keys
+    details = json.dumps({"Piece ID": "ABC", "Size": 256})
+    raw_line = f"2025-10-25T12:00:00Z\tINFO\tpiecestore\tdownloaded\t{details}\n"
+    # ... assertions
+
+@pytest.mark.asyncio
+async def test_parser_new_format(tmp_path):
+    # Test with snake_case keys
+    details = json.dumps({"piece_id": "ABC", "size": 256})
+    raw_line = f"2025-10-25T12:00:00Z\tINFO\tpiecestore\tdownloaded\t{details}\n"
+    # ... assertions (should produce identical output)
+
+def test_normalizer_passthrough():
+    # Unit test: old format unchanged
+    old_format = {"Piece ID": "ABC"}
+    assert normalize(old_format) == old_format
+
+def test_normalizer_remaps_snake_case():
+    # Unit test: new format remapped
+    new_format = {"piece_id": "ABC"}
+    expected = {"Piece ID": "ABC"}
+    assert normalize(new_format) == expected
+```
 
 ## Code Style
 
