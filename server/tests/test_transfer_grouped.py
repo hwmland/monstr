@@ -4,10 +4,12 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import func, select
 
 from server.src import database
 from server.src.config import Settings
 from server.src.core.app import create_app
+from server.src.models import TransferGrouped
 from server.src.repositories.transfer_grouped import TransferGroupedRepository
 from server.src.schemas import TransferGroupedCreate
 from server.src.api.routes.transfer_grouped import parse_interval_length
@@ -75,6 +77,46 @@ async def test_list_transfer_grouped_filters() -> None:
     assert len(body_class) == 1
     assert body_class[0]["source"] == "node-b"
     assert body_class[0]["sizeClass"] == "4K"
+
+
+@pytest.mark.asyncio
+async def test_delete_many_by_ids_large_batch() -> None:
+    """delete_many_by_ids must not raise 'too many SQL variables' for >999 IDs."""
+    app_settings = Settings(sources=[])
+    await database.init_database(app_settings)
+
+    now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+    interval_end = now + timedelta(minutes=1)
+
+    batch_size = 1001  # deliberately over the SQLite 999-variable limit
+    entries = [
+        TransferGroupedCreate(
+            source="node-x",
+            satellite_id="sat-x",
+            interval_start=now + timedelta(minutes=i),
+            interval_end=interval_end + timedelta(minutes=i),
+            size_class="1K",
+        )
+        for i in range(batch_size)
+    ]
+
+    async with database.SessionFactory() as session:
+        repo = TransferGroupedRepository(session)
+        created = await repo.create_many(entries)
+        ids = [row.id for row in created]
+
+    # Should not raise sqlite3.OperationalError: too many SQL variables
+    async with database.SessionFactory() as session:
+        repo = TransferGroupedRepository(session)
+        await repo.delete_many_by_ids(ids)
+        await session.commit()
+
+    async with database.SessionFactory() as session:
+        result = await session.execute(
+            select(func.count()).select_from(TransferGrouped).where(TransferGrouped.source == "node-x")
+        )
+        remaining_count = result.scalar_one()
+    assert remaining_count == 0
 
 
 def test_parse_interval_length_supports_days() -> None:
