@@ -292,3 +292,87 @@ def test_normalize_details_remaps_snake_case() -> None:
         "Action": "GET",
         "unknown_field": "preserved",
     }
+
+
+@pytest.mark.asyncio
+async def test_reputation_service_node_scores_updated_new_format(tmp_path) -> None:
+    """Test the real 'node scores updated' action with full new-format snake_case payload."""
+    settings = Settings(sources=[], unprocessed_log_dir=str(tmp_path))
+    service = LogMonitorService(settings)
+
+    details = json.dumps(
+        {
+            "process": "storagenode",
+            "satellite_id": "1wFTAgs9DP5RSnCqKV1eLf6N9wtk4EAtmN5DpSxcs8EjT69tGE",
+            "total_audits": 2540,
+            "successful_audits": 2513,
+            "audit_score": 1,
+            "online_score": 0.9746598639455782,
+            "suspension_score": 1,
+            "audit_score_delta": 0,
+            "online_score_delta": 0,
+            "suspension_score_delta": 0,
+        }
+    )
+    raw_line = f"2026-03-05T02:42:44Z\tINFO\treputation:service\tnode scores updated\t{details}\n"
+
+    entries, transfers, reputations, is_unprocessed = await service._process_line(
+        "Node1", raw_line
+    )
+
+    assert is_unprocessed is False
+    assert entries is not None and len(entries) == 1
+    assert transfers == []
+    assert len(reputations) == 1
+
+    reputation = reputations[0]
+    assert reputation.source == "Node1"
+    assert reputation.satellite_id == "1wFTAgs9DP5RSnCqKV1eLf6N9wtk4EAtmN5DpSxcs8EjT69tGE"
+    assert reputation.audits_total == 2540
+    assert reputation.audits_success == 2513
+    assert reputation.score_audit == pytest.approx(1.0)
+    assert reputation.score_online == pytest.approx(0.9746598639455782)
+    assert reputation.score_suspension == pytest.approx(1.0)
+    assert reputation.timestamp == datetime(2026, 3, 5, 2, 42, 44, tzinfo=timezone.utc)
+
+
+@pytest.mark.asyncio
+async def test_reputation_service_node_scores_updated_old_format(tmp_path) -> None:
+    """Test the real 'node scores updated' action with full old-format Title Case payload."""
+    settings = Settings(sources=[], unprocessed_log_dir=str(tmp_path))
+    service = LogMonitorService(settings)
+
+    details = json.dumps(
+        {
+            "Process": "storagenode",
+            "Satellite ID": "12L9ZFwhzVpuEKMUNUqkaTLGzwY9G24tbiigLiXpmZWKwmcNDDs",
+            "Total Audits": 11501,
+            "Successful Audits": 11389,
+            "Audit Score": 1,
+            "Online Score": 0.9822654462242563,
+            "Suspension Score": 1,
+            "Audit Score Delta": 0,
+            "Online Score Delta": 0,
+            "Suspension Score Delta": 0,
+        }
+    )
+    raw_line = f"2026-03-05T09:58:38Z\tINFO\treputation:service\tnode scores updated\t{details}\n"
+
+    entries, transfers, reputations, is_unprocessed = await service._process_line(
+        "Node2", raw_line
+    )
+
+    assert is_unprocessed is False
+    assert entries is not None and len(entries) == 1
+    assert transfers == []
+    assert len(reputations) == 1
+
+    reputation = reputations[0]
+    assert reputation.source == "Node2"
+    assert reputation.satellite_id == "12L9ZFwhzVpuEKMUNUqkaTLGzwY9G24tbiigLiXpmZWKwmcNDDs"
+    assert reputation.audits_total == 11501
+    assert reputation.audits_success == 11389
+    assert reputation.score_audit == pytest.approx(1.0)
+    assert reputation.score_online == pytest.approx(0.9822654462242563)
+    assert reputation.score_suspension == pytest.approx(1.0)
+    assert reputation.timestamp == datetime(2026, 3, 5, 9, 58, 38, tzinfo=timezone.utc)

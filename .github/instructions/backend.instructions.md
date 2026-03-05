@@ -119,20 +119,23 @@ except (OperationalError, StaleDataError) as exc:
 
 **Field name mapping (new → old)**:
 
-| snake_case (new)    | Title Case (old/canonical) |
-| ------------------- | -------------------------- |
-| `piece_id`          | `Piece ID`                 |
-| `satellite_id`      | `Satellite ID`             |
-| `action`            | `Action`                   |
-| `size`              | `Size`                     |
-| `offset`            | `Offset`                   |
-| `remote_address`    | `Remote Address`           |
-| `process`           | `Process`                  |
-| `total_audits`      | `Total Audits`             |
-| `successful_audits` | `Successful Audits`        |
-| `audit_score`       | `Audit Score`              |
-| `online_score`      | `Online Score`             |
-| `suspension_score`  | `Suspension Score`         |
+| snake_case (new)         | Title Case (old/canonical) |
+| ------------------------ | -------------------------- |
+| `piece_id`               | `Piece ID`                 |
+| `satellite_id`           | `Satellite ID`             |
+| `action`                 | `Action`                   |
+| `size`                   | `Size`                     |
+| `offset`                 | `Offset`                   |
+| `remote_address`         | `Remote Address`           |
+| `process`                | `Process`                  |
+| `total_audits`           | `Total Audits`             |
+| `successful_audits`      | `Successful Audits`        |
+| `audit_score`            | `Audit Score`              |
+| `online_score`           | `Online Score`             |
+| `suspension_score`       | `Suspension Score`         |
+| `audit_score_delta`      | `Audit Score Delta`        |
+| `online_score_delta`     | `Online Score Delta`       |
+| `suspension_score_delta` | `Suspension Score Delta`   |
 
 ### Storj Node API
 

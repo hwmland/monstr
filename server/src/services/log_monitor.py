@@ -41,6 +41,9 @@ _SNAKE_TO_TITLE = {
     "audit_score": "Audit Score",
     "online_score": "Online Score",
     "suspension_score": "Suspension Score",
+    "audit_score_delta": "Audit Score Delta",
+    "online_score_delta": "Online Score Delta",
+    "suspension_score_delta": "Suspension Score Delta",
 }
 
 
