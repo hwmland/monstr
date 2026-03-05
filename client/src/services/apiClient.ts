@@ -15,7 +15,6 @@ import type {
   TransferTotalsNode,
   TransferTotalsResponse,
   DiskUsageChangeResponse,
-  DiskUsageUsageMode,
   DiskUsageUsageNode,
   DiskUsageUsageResponse,
   IP24StatusResponse,
@@ -368,12 +367,16 @@ export const fetchDiskUsageChange = async (
 
       const record = entry as Record<string, unknown>;
       nodesMap[node] = {
-        freeEnd: toNumeric(record.freeEnd ?? record.free_end),
-        usageEnd: toNumeric(record.usageEnd ?? record.usage_end),
+        capacityEnd: toNumeric(record.capacityEnd ?? record.capacity_end),
+        usefullEnd: toNumeric(record.usefullEnd ?? record.usefull_end),
         trashEnd: toNumeric(record.trashEnd ?? record.trash_end),
-        freeChange: toNumeric(record.freeChange ?? record.free_change),
-        usageChange: toNumeric(record.usageChange ?? record.usage_change),
+        usageEnd: toNumeric(record.usageEnd ?? record.usage_end),
+        reclaimableEnd: toNumeric(record.reclaimableEnd ?? record.reclaimable_end),
+        capacityChange: toNumeric(record.capacityChange ?? record.capacity_change),
+        usefullChange: toNumeric(record.usefullChange ?? record.usefull_change),
         trashChange: toNumeric(record.trashChange ?? record.trash_change),
+        usageChange: toNumeric(record.usageChange ?? record.usage_change),
+        reclaimableChange: toNumeric(record.reclaimableChange ?? record.reclaimable_change),
       };
     }
   }
@@ -388,9 +391,8 @@ export const fetchDiskUsageChange = async (
 export const fetchDiskUsageUsage = async (
   nodes: string[],
   intervalDays: number,
-  mode: DiskUsageUsageMode,
 ): Promise<DiskUsageUsageResponse> => {
-  const response = await apiClient.post("/diskusage/usage", { nodes, intervalDays, mode });
+  const response = await apiClient.post("/diskusage/usage", { nodes, intervalDays });
   const raw = response.data ?? {};
 
   const periods: DiskUsageUsageResponse["periods"] = {};
@@ -411,8 +413,10 @@ export const fetchDiskUsageUsage = async (
         const metrics = nodeValue as Record<string, unknown>;
         nodesMap[nodeName] = {
           capacity: toNumeric(metrics.capacity),
+          usefull: toNumeric(metrics.usefull),
           usage: toNumeric(metrics.usage),
           trash: toNumeric(metrics.trash),
+          reclaimable: toNumeric(metrics.reclaimable),
           at: String(metrics.at ?? ""),
         };
       }

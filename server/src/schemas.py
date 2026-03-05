@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -531,15 +531,11 @@ class DiskUsageFilters(BaseModel):
 class DiskUsageRead(BaseModel):
     source: str
     period: str
-    max_usage: int = Field(serialization_alias="maxUsage")
-    trash_at_max_usage: int = Field(serialization_alias="trashAtMaxUsage")
-    max_trash: int = Field(serialization_alias="maxTrash")
-    usage_at_max_trash: int = Field(serialization_alias="usageAtMaxTrash")
-    usage_end: int = Field(serialization_alias="usageEnd")
-    free_end: int = Field(serialization_alias="freeEnd")
+    capacity_end: int = Field(serialization_alias="capacityEnd")
+    usefull_end: int = Field(serialization_alias="usefullEnd")
     trash_end: int = Field(serialization_alias="trashEnd")
-    max_usage_at: datetime = Field(serialization_alias="maxUsageAt")
-    max_trash_at: datetime = Field(serialization_alias="maxTrashAt")
+    usage_end: int = Field(serialization_alias="usageEnd")
+    reclaimable_end: int = Field(serialization_alias="reclaimableEnd")
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -561,12 +557,16 @@ class DiskUsageChangeRequest(BaseModel):
 
 
 class DiskUsageChangeNode(BaseModel):
-    free_end: int = Field(default=0, serialization_alias="freeEnd")
-    usage_end: int = Field(default=0, serialization_alias="usageEnd")
+    capacity_end: int = Field(default=0, serialization_alias="capacityEnd")
+    usefull_end: int = Field(default=0, serialization_alias="usefullEnd")
     trash_end: int = Field(default=0, serialization_alias="trashEnd")
-    free_change: int = Field(default=0, serialization_alias="freeChange")
-    usage_change: int = Field(default=0, serialization_alias="usageChange")
+    usage_end: int = Field(default=0, serialization_alias="usageEnd")
+    reclaimable_end: int = Field(default=0, serialization_alias="reclaimableEnd")
+    capacity_change: int = Field(default=0, serialization_alias="capacityChange")
+    usefull_change: int = Field(default=0, serialization_alias="usefullChange")
     trash_change: int = Field(default=0, serialization_alias="trashChange")
+    usage_change: int = Field(default=0, serialization_alias="usageChange")
+    reclaimable_change: int = Field(default=0, serialization_alias="reclaimableChange")
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -583,19 +583,17 @@ class DiskUsageUsageRequest(BaseModel):
         validation_alias="intervalDays",
         description="Number of days back from today to include (inclusive).",
     )
-    mode: Literal["end", "maxTrash", "maxUsage"] = Field(
-        default="end",
-        description="Select which snapshot fields to use for usage/trash values.",
-    )
 
     model_config = ConfigDict(populate_by_name=True)
 
 
 class DiskUsageUsageNode(BaseModel):
-    capacity: int = Field(description="Reported free capacity value", serialization_alias="capacity")
-    usage: int = Field(description="Usage metric for the selected mode")
-    trash: int = Field(description="Trash metric for the selected mode")
-    at: datetime = Field(description="Timestamp representing when the metrics were captured")
+    capacity: int = Field(description="Total disk capacity", serialization_alias="capacity")
+    usefull: int = Field(description="Useful non-trash data")
+    usage: int = Field(description="Total used space (usefull + trash)")
+    trash: int = Field(description="Trash size")
+    reclaimable: int = Field(default=0, description="Reclaimable trash space")
+    at: datetime = Field(description="Timestamp representing the end of the period")
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -653,9 +651,11 @@ class DashStorjSatellite(BaseModel):
 
 class DashStorjDiskSpace(BaseModel):
     used: float
+    usefull: float = 0
     available: float
     trash: float
     overused: float
+    reclaimable: float = 0
 
 
 class DashStorjBandwidth(BaseModel):

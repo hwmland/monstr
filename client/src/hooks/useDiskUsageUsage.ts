@@ -2,12 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { fetchDiskUsageUsage } from "../services/apiClient";
 import createRequestDeduper from "../utils/requestDeduper";
-import type { DiskUsageUsageMode, DiskUsageUsageNode } from "../types";
+import type { DiskUsageUsageNode } from "../types";
 
 interface UseDiskUsageUsageOptions {
   nodes: string[];
   intervalDays: number;
-  mode?: DiskUsageUsageMode;
   enabled?: boolean;
 }
 
@@ -21,7 +20,6 @@ interface UseDiskUsageUsageResult {
 const useDiskUsageUsage = ({
   nodes,
   intervalDays,
-  mode = "end",
   enabled = true,
 }: UseDiskUsageUsageOptions): UseDiskUsageUsageResult => {
   const [periods, setPeriods] = useState<Record<string, Record<string, DiskUsageUsageNode>> | null>(null);
@@ -40,14 +38,14 @@ const useDiskUsageUsage = ({
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetchDiskUsageUsage(nodeFilter, intervalDays, mode);
+      const response = await fetchDiskUsageUsage(nodeFilter, intervalDays);
       setPeriods(response.periods);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load disk usage data");
     } finally {
       setIsLoading(false);
     }
-  }, [enabled, intervalDays, mode, nodes]);
+  }, [enabled, intervalDays, nodes]);
 
   const deduperRef = useRef(createRequestDeduper());
 

@@ -127,12 +127,16 @@ export interface TransferTotalsResponse {
 }
 
 export interface DiskUsageChangeNode {
-  freeEnd: number;
-  usageEnd: number;
+  capacityEnd: number;
+  usefullEnd: number;
   trashEnd: number;
-  freeChange: number;
-  usageChange: number;
+  usageEnd: number;
+  reclaimableEnd: number;
+  capacityChange: number;
+  usefullChange: number;
   trashChange: number;
+  usageChange: number;
+  reclaimableChange: number;
 }
 
 export interface DiskUsageChangeResponse {
@@ -141,13 +145,12 @@ export interface DiskUsageChangeResponse {
   nodes: Record<string, DiskUsageChangeNode>;
 }
 
-export type DiskUsageUsageMode = "end" | "maxTrash" | "maxUsage";
-export const DISK_USAGE_MODE_VALUES = ["end", "maxTrash", "maxUsage"] as const satisfies readonly DiskUsageUsageMode[];
-
 export interface DiskUsageUsageNode {
   capacity: number;
+  usefull: number;
   usage: number;
   trash: number;
+  reclaimable: number;
   at: string;
 }
 

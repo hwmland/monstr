@@ -730,11 +730,23 @@ class NodeApiService:
                 except Exception:
                     return 0
 
-            used = to_int(disk_payload.get("used"))
-            available = to_int(disk_payload.get("available"))
             trash = to_int(disk_payload.get("trash"))
             now = datetime.now(timezone.utc)
             period = now.date().isoformat()
+
+            # Detect API format version: new format has "allocated", old has "available"
+            if "allocated" in disk_payload:
+                # NEW FORMAT
+                capacity = to_int(disk_payload.get("allocated"))
+                usage = to_int(disk_payload.get("used"))
+                reclaimable = to_int(disk_payload.get("reclaimable"))
+                usefull = usage - reclaimable - trash
+            else:
+                # OLD FORMAT
+                capacity = to_int(disk_payload.get("available"))
+                usefull = to_int(disk_payload.get("used"))
+                usage = usefull + trash
+                reclaimable = 0
 
             try:
                 async with database.SessionFactory() as session:
@@ -744,31 +756,22 @@ class NodeApiService:
                         rec = DiskUsage(
                             source=state.name,
                             period=period,
-                            max_usage=used,
-                            trash_at_max_usage=trash,
-                            max_trash=trash,
-                            usage_at_max_trash=used,
-                            usage_end=used,
+                            capacity_end=capacity,
+                            usefull_end=usefull,
                             trash_end=trash,
-                            free_end=available,
-                            max_usage_at=now,
-                            max_trash_at=now,
+                            usage_end=usage,
+                            reclaimable_end=reclaimable,
                         )
-                        # Log the full record values being created
                         logger.debug(
                             "Creating DiskUsage record: %s",
                             {
                                 "source": rec.source,
                                 "period": rec.period,
-                                "max_usage": rec.max_usage,
-                                "trash_at_max_usage": rec.trash_at_max_usage,
-                                "max_trash": rec.max_trash,
-                                "usage_at_max_trash": rec.usage_at_max_trash,
-                                "usage_end": rec.usage_end,
+                                "capacity_end": rec.capacity_end,
+                                "usefull_end": rec.usefull_end,
                                 "trash_end": rec.trash_end,
-                                "free_end": rec.free_end,
-                                "max_usage_at": rec.max_usage_at.isoformat() if rec.max_usage_at else None,
-                                "max_trash_at": rec.max_trash_at.isoformat() if rec.max_trash_at else None,
+                                "usage_end": rec.usage_end,
+                                "reclaimable_end": rec.reclaimable_end,
                             },
                         )
                         session.add(rec)
@@ -776,40 +779,28 @@ class NodeApiService:
                         await session.commit()
                     else:
                         rec: DiskUsage = existing
-                        changed = False
-                        if used > (rec.max_usage or 0):
-                            rec.max_usage = used
-                            rec.trash_at_max_usage = trash
-                            rec.max_usage_at = now
-                            changed = True
-                        if trash > (rec.max_trash or 0):
-                            rec.max_trash = trash
-                            rec.usage_at_max_trash = used
-                            rec.max_trash_at = now
-                            changed = True
-
-                        # Only update end-of-period values if they differ
-                        if rec.usage_end != used or rec.trash_end != trash or rec.free_end != available:
-                            rec.usage_end = used
+                        if (
+                            rec.capacity_end != capacity
+                            or rec.usefull_end != usefull
+                            or rec.trash_end != trash
+                            or rec.usage_end != usage
+                            or rec.reclaimable_end != reclaimable
+                        ):
+                            rec.capacity_end = capacity
+                            rec.usefull_end = usefull
                             rec.trash_end = trash
-                            rec.free_end = available
-                            changed = True
-
-                        if changed:
+                            rec.usage_end = usage
+                            rec.reclaimable_end = reclaimable
                             logger.debug(
                                 "Updated DiskUsage record: %s",
                                 {
                                     "source": rec.source,
                                     "period": rec.period,
-                                    "max_usage": rec.max_usage,
-                                    "trash_at_max_usage": rec.trash_at_max_usage,
-                                    "max_trash": rec.max_trash,
-                                    "usage_at_max_trash": rec.usage_at_max_trash,
-                                    "usage_end": rec.usage_end,
+                                    "capacity_end": rec.capacity_end,
+                                    "usefull_end": rec.usefull_end,
                                     "trash_end": rec.trash_end,
-                                    "free_end": rec.free_end,
-                                    "max_usage_at": rec.max_usage_at.isoformat() if rec.max_usage_at else None,
-                                    "max_trash_at": rec.max_trash_at.isoformat() if rec.max_trash_at else None,
+                                    "usage_end": rec.usage_end,
+                                    "reclaimable_end": rec.reclaimable_end,
                                 },
                             )
                             session.add(rec)

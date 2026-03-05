@@ -237,41 +237,25 @@ class DiskUsage(SQLModel, table=True):
         sa_column=Column(String(16), primary_key=True, nullable=False),
         description="Period identifier (e.g. 2025-11-24)",
     )
-    max_usage: int = Field(
+    capacity_end: int = Field(
         sa_column=Column(Integer, nullable=False),
-        description="Maximum disk usage in bytes",
+        description="Total disk capacity at period end in bytes (was free_end / available from API)",
     )
-    trash_at_max_usage: int = Field(
+    usefull_end: int = Field(
         sa_column=Column(Integer, nullable=False),
-        description="Trash size in bytes when max usage occurred",
-    )
-    max_trash: int = Field(
-        sa_column=Column(Integer, nullable=False),
-        description="Maximum trash size in bytes",
-    )
-    usage_at_max_trash: int = Field(
-        sa_column=Column(Integer, nullable=False),
-        description="Disk usage in bytes when max trash occurred",
-    )
-    usage_end: int = Field(
-        sa_column=Column(Integer, nullable=False),
-        description="Disk usage at period end in bytes",
+        description="Useful (non-trash) data at period end in bytes",
     )
     trash_end: int = Field(
         sa_column=Column(Integer, nullable=False),
         description="Trash size at period end in bytes",
     )
-    free_end: int = Field(
+    usage_end: int = Field(
         sa_column=Column(Integer, nullable=False),
-        description="Free space at period end in bytes",
+        description="Total used space at period end in bytes (usefull_end + trash_end)",
     )
-    max_usage_at: datetime = Field(
-        sa_column=Column(DateTime(timezone=True), nullable=False),
-        description="Timestamp when max usage occurred",
-    )
-    max_trash_at: datetime = Field(
-        sa_column=Column(DateTime(timezone=True), nullable=False),
-        description="Timestamp when max trash occurred",
+    reclaimable_end: int = Field(
+        sa_column=Column(Integer, nullable=False),
+        description="Reclaimable trash space at period end in bytes",
     )
 
 
