@@ -210,7 +210,7 @@ const NodePanel = ({ nodeName, refreshToken }: NodePanelProps) => {
   const diskSpaceBreakdown = diskSpace
     ? [
         { key: "used", label: "Usefull", value: diskSpace.usefull, color: "#0059D0" },
-        { key: "free", label: "Free", value: Math.max(0, diskSpace.available - (diskSpace.used + diskSpace.trash + diskSpace.overused + diskSpace.reclaimable)), color: "#D6D6D6" },
+        { key: "free", label: "Free", value: Math.max(0, diskSpace.available - diskSpace.used), color: "#D6D6D6" },
         { key: "trash", label: "Trash", value: diskSpace.trash, color: "#8A2BE2" },
         { key: "reclaimable", label: "Reclaimable", value: diskSpace.reclaimable, color: "#C06EFF" },
         { key: "over", label: "Overused", value: diskSpace.overused, color: "#2582FF" },
