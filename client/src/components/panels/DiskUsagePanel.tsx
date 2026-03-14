@@ -10,7 +10,7 @@ import PanelControlsButton from "../PanelControlsButton";
 import PanelControlsCheckbox from "../PanelControlsCheckbox";
 import useDiskUsageUsage from "../../hooks/useDiskUsageUsage";
 import { formatSizeValue, pickSizeUnit } from "../../utils/units";
-import { DISK_USAGE_MODE_VALUES, type DiskUsageUsageMode, type DiskUsageUsageNode } from "../../types";
+import type { DiskUsageUsageNode } from "../../types";
 
 interface DiskUsagePanelProps {
 	selectedNodes: string[];
@@ -47,12 +47,6 @@ const INTERVAL_SUBTITLES: Record<IntervalKey, string> = {
 	"90d": "Last 90 days",
 	"1y": "Last year",
 };
-
-const MODE_OPTIONS: Array<{ id: DiskUsageUsageMode; label: string }> = [
-	{ id: "end", label: "End" },
-	{ id: "maxTrash", label: "Trash" },
-	{ id: "maxUsage", label: "Usage" },
-];
 
 const formatAxisLabel = (value: string): string => {
 	try {
@@ -94,16 +88,18 @@ const DiskUsageTooltip: FC<{
 	const period = String(payload[0]?.payload?.period ?? "");
 	const label = formatTooltipTimestamp(period);
 	const source = payload[0]?.payload as {
-		trashPercent?: number;
+		wastePercent?: number;
 		freePercent?: number;
+		trash?: number;
+		reclaimable?: number;
 	};
 
-	const filteredEntries = payload.filter((entry: any) => entry?.dataKey !== "trashPercent" && entry?.dataKey !== "freePercent");
-	const tableKeys = new Set(["usage", "trash", "capacity"]);
+	const filteredEntries = payload.filter((entry: any) => entry?.dataKey !== "wastePercent" && entry?.dataKey !== "freePercent");
+	const tableKeys = new Set(["usefull", "waste", "capacity"]);
 	const tableEntries = filteredEntries
 		.filter((entry: any) => tableKeys.has(String(entry?.dataKey ?? "")))
 		.sort((a: any, b: any) => {
-			const order = ["usage", "trash", "capacity"];
+			const order = ["usefull", "waste", "capacity"];
 			return order.indexOf(String(a?.dataKey)) - order.indexOf(String(b?.dataKey));
 		});
 	const extraEntries = filteredEntries.filter((entry: any) => !tableKeys.has(String(entry?.dataKey ?? "")));
@@ -119,22 +115,41 @@ const DiskUsageTooltip: FC<{
 						const color = entry?.color ?? "var(--color-text)";
 						const value = Number(entry?.value ?? 0);
 						let percentAnnotation: string | null = null;
-						if (entry?.dataKey === "trash" && typeof source?.trashPercent === "number") {
-							percentAnnotation = `${source.trashPercent.toFixed(1)}%`;
+						if (entry?.dataKey === "waste" && typeof source?.wastePercent === "number") {
+							percentAnnotation = `${source.wastePercent.toFixed(1)}%`;
 						} else if (entry?.dataKey === "capacity" && typeof source?.freePercent === "number") {
 							percentAnnotation = `(${source.freePercent.toFixed(1)}% Free)`;
 						}
 
+						const isWaste = entry?.dataKey === "waste";
+						const subStyle = { fontSize: "0.8em", opacity: 0.75 };
+
 						return (
-							<tr key={String(entry?.dataKey ?? name)}>
-                <td style={{ color, padding: "2px 6px", fontWeight: 500, textAlign: "left" }}>{name}:</td>
-								<td style={{ padding: "2px 6px", textAlign: "right" }}>
-									{formatSizeValue(value)} {unitLabel}
-								</td>
-								<td style={{ padding: "2px 1rem", textAlign: "right", minWidth: "3.5rem" }}>
-									{percentAnnotation ?? ""}
-								</td>
-							</tr>
+							<>
+								<tr key={String(entry?.dataKey ?? name)}>
+									<td style={{ color, padding: "2px 6px", fontWeight: 500, textAlign: "left" }}>{name}:</td>
+									<td style={{ padding: "2px 6px", textAlign: "right" }}>
+										{formatSizeValue(value)} {unitLabel}
+									</td>
+									<td style={{ padding: "2px 1rem", textAlign: "right", minWidth: "3.5rem" }}>
+										{percentAnnotation ?? ""}
+									</td>
+								</tr>
+								{isWaste ? (
+									<>
+										<tr key="waste-trash" style={subStyle}>
+											<td style={{ color, padding: "1px 6px 1px 18px", textAlign: "left" }}>Trash:</td>
+											<td style={{ padding: "1px 6px", textAlign: "right" }}>{formatSizeValue(Number(source?.trash ?? 0))} {unitLabel}</td>
+											<td />
+										</tr>
+										<tr key="waste-reclaimable" style={subStyle}>
+											<td style={{ color, padding: "1px 6px 1px 18px", textAlign: "left" }}>Reclaimable:</td>
+											<td style={{ padding: "1px 6px", textAlign: "right" }}>{formatSizeValue(Number(source?.reclaimable ?? 0))} {unitLabel}</td>
+											<td />
+										</tr>
+									</>
+								) : null}
+							</>
 						);
 					})}
 				</tbody>
@@ -160,9 +175,6 @@ const DiskUsagePanel: FC<DiskUsagePanelProps> = ({ selectedNodes }) => {
 	const visible = isVisible("diskUsage");
 	const [interval, setInterval] = useState<IntervalKey>(() =>
 		getStoredSelection<IntervalKey>("monstr.panel.DiskUsage.interval", INTERVAL_VALUES, "1y"),
-	);
-	const [mode, setMode] = useState<DiskUsageUsageMode>(() =>
-		getStoredSelection<DiskUsageUsageMode>("monstr.panel.DiskUsage.mode", DISK_USAGE_MODE_VALUES, "end"),
 	);
 	const [layout, setLayout] = useState<LayoutMode>(() =>
 		getStoredSelection<LayoutMode>("monstr.panel.DiskUsage.layout", LAYOUT_MODE_VALUES, "stacked"),
@@ -197,7 +209,6 @@ const DiskUsagePanel: FC<DiskUsagePanelProps> = ({ selectedNodes }) => {
 	const { periods, isLoading, error, refresh } = useDiskUsageUsage({
 		nodes: selectedNodes,
 		intervalDays,
-		mode,
 		enabled: visible,
 	});
 
@@ -217,22 +228,24 @@ const DiskUsagePanel: FC<DiskUsagePanelProps> = ({ selectedNodes }) => {
 
 	const aggregatedSeries = useMemo(() => {
 		if (!periods) {
-			return [] as Array<{ period: string; usage: number; trash: number; capacity: number }>;
+			return [] as Array<{ period: string; usefull: number; waste: number; trash: number; reclaimable: number; capacity: number }>;
 		}
 
 		return sortedPeriods.map((period) => {
 			const nodes = periods[period] ?? {};
-			let usage = 0;
+			let usefull = 0;
 			let trash = 0;
+			let reclaimable = 0;
 			let capacity = 0;
 
 			Object.values(nodes as Record<string, DiskUsageUsageNode>).forEach((metrics) => {
-				usage += Number(metrics?.usage ?? 0);
+				usefull += Number(metrics?.usefull ?? 0);
 				trash += Number(metrics?.trash ?? 0);
+				reclaimable += Number(metrics?.reclaimable ?? 0);
 				capacity += Number(metrics?.capacity ?? 0);
 			});
 
-			return { period, usage, trash, capacity };
+			return { period, usefull, waste: trash + reclaimable, trash, reclaimable, capacity };
 		});
 	}, [periods, sortedPeriods]);
 
@@ -242,18 +255,20 @@ const DiskUsagePanel: FC<DiskUsagePanelProps> = ({ selectedNodes }) => {
 				chartData: [] as Array<{
 					period: string;
 					label: string;
-					usage: number;
+					usefull: number;
+					waste: number;
 					trash: number;
+					reclaimable: number;
 					capacity: number;
 					freePercent: number;
-					trashPercent: number;
+					wastePercent: number;
 				}>,
 				unitLabel: "B",
 			};
 		}
 
 		const maxValue = aggregatedSeries.reduce((max, entry) => {
-			const stackedValue = entry.usage + entry.trash;
+			const stackedValue = entry.usefull + entry.waste;
 			return Math.max(max, entry.capacity, stackedValue);
 		}, 0);
 
@@ -261,20 +276,21 @@ const DiskUsagePanel: FC<DiskUsagePanelProps> = ({ selectedNodes }) => {
 		const factor = unitInfo.factor || 1;
 
 		const data = aggregatedSeries.map((entry) => {
-			const freeBytes = entry.capacity - entry.trash - entry.usage;
+			const freeBytes = entry.capacity - entry.waste - entry.usefull;
 			const rawFreePercent = entry.capacity > 0 ? (freeBytes / entry.capacity) * 100 : 0;
 			const freePercent = Math.max(0, Math.min(rawFreePercent, 100));
-			const rawTrashPercent = entry.usage > 0 ? (entry.trash / entry.usage) * 100 : 0;
-			const trashPercent = Math.max(0, Math.min(rawTrashPercent, 100));
+			const totalUsed = entry.usefull + entry.waste;
+			const rawWastePercent = totalUsed > 0 ? (entry.waste / totalUsed) * 100 : 0;
+			const wastePercent = Math.max(0, Math.min(rawWastePercent, 100));
 
 			return {
 				period: entry.period,
 				label: formatAxisLabel(entry.period),
-				usage: entry.usage / factor,
-				trash: entry.trash / factor,
-				capacity: entry.capacity / factor,
+				usefull: entry.usefull / factor,
+				waste: entry.waste / factor,					trash: entry.trash / factor,
+					reclaimable: entry.reclaimable / factor,				capacity: entry.capacity / factor,
 				freePercent,
-				trashPercent,
+				wastePercent,
 			};
 		});
 
@@ -292,7 +308,7 @@ const DiskUsagePanel: FC<DiskUsagePanelProps> = ({ selectedNodes }) => {
 	};
 
 	const showCapacitySeries = !zoomMode;
-	const showTrashSeries = !zoomMode || layout === "stacked";
+	const showWasteSeries = !zoomMode || layout === "stacked";
 
 	const absoluteYAxisDomain = useMemo(() => {
 		if (!zoomMode || chartData.length === 0) {
@@ -303,11 +319,11 @@ const DiskUsagePanel: FC<DiskUsagePanelProps> = ({ selectedNodes }) => {
 		let maxValue = Number.NEGATIVE_INFINITY;
 
 		chartData.forEach((point) => {
-			const usageValue = Number(point.usage);
-			const trashValue = Number(point.trash);
-			const stackedValue = showTrashSeries ? usageValue + trashValue : usageValue;
+			const usefullValue = Number(point.usefull);
+			const wasteValue = Number(point.waste);
+			const stackedValue = showWasteSeries ? usefullValue + wasteValue : usefullValue;
 			maxValue = Math.max(maxValue, stackedValue);
-			minValue = Math.min(minValue, usageValue);
+			minValue = Math.min(minValue, usefullValue);
 		});
 
 		if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) {
@@ -320,7 +336,7 @@ const DiskUsagePanel: FC<DiskUsagePanelProps> = ({ selectedNodes }) => {
 		const upperBound = maxValue + padding;
 
 		return [lowerBound, upperBound] as const;
-	}, [chartData, zoomMode, showTrashSeries, layout]);
+	}, [chartData, zoomMode, showWasteSeries, layout]);
 
 	return (
 		<section className="panel">
@@ -362,13 +378,6 @@ const DiskUsagePanel: FC<DiskUsagePanelProps> = ({ selectedNodes }) => {
 								<PanelControlsButton key="stacked" type="button" active={layout === "stacked"} onClick={() => setLayout("stacked")} content="Stacked" />,
 								<PanelControlsButton key="separate" type="button" active={layout === "separate"} onClick={() => setLayout("separate")} content="Separate" />,
 							]}
-						/>
-						<PanelControls
-							ariaLabel="Disk usage snapshot mode"
-							storageKey="monstr.panel.DiskUsage.mode"
-							buttons={MODE_OPTIONS.map((option) => (
-								<PanelControlsButton key={option.id} type="button" active={mode === option.id} onClick={() => setMode(option.id)} content={option.label} />
-							))}
 						/>
 						<PanelControls
 							ariaLabel="Disk usage window"
@@ -416,8 +425,8 @@ const DiskUsagePanel: FC<DiskUsagePanelProps> = ({ selectedNodes }) => {
 											<Area
 												yAxisId="absolute"
 												type="linear"
-												dataKey="usage"
-												name="Usage"
+												dataKey="usefull"
+												name="Usefull"
 												stackId="usage"
 												stroke="#38BDF8"
 												fill="rgba(56, 189, 248, 0.35)"
@@ -425,12 +434,12 @@ const DiskUsagePanel: FC<DiskUsagePanelProps> = ({ selectedNodes }) => {
 												isAnimationActive={false}
 												activeDot={{ r: 3 }}
 											/>
-											{showTrashSeries ? (
+											{showWasteSeries ? (
 												<Area
 													yAxisId="absolute"
 													type="linear"
-													dataKey="trash"
-													name="Trash"
+													dataKey="waste"
+													name="Waste"
 													stackId="usage"
 													stroke="#F97316"
 													fill="rgba(249, 115, 22, 0.35)"
@@ -442,9 +451,9 @@ const DiskUsagePanel: FC<DiskUsagePanelProps> = ({ selectedNodes }) => {
 										</>
 									) : (
 										<>
-											<Line yAxisId="absolute" type="linear" dataKey="usage" name="Usage" stroke="#38BDF8" strokeWidth={2} dot={false} isAnimationActive={false} />
-											{showTrashSeries ? (
-												<Line yAxisId="absolute" type="linear" dataKey="trash" name="Trash" stroke="#F97316" strokeWidth={2} dot={false} isAnimationActive={false} />
+											<Line yAxisId="absolute" type="linear" dataKey="usefull" name="Usefull" stroke="#38BDF8" strokeWidth={2} dot={false} isAnimationActive={false} />
+											{showWasteSeries ? (
+												<Line yAxisId="absolute" type="linear" dataKey="waste" name="Waste" stroke="#F97316" strokeWidth={2} dot={false} isAnimationActive={false} />
 											) : null}
 										</>
 									)}
@@ -476,8 +485,8 @@ const DiskUsagePanel: FC<DiskUsagePanelProps> = ({ selectedNodes }) => {
 											<Line
 												yAxisId="percent"
 												type="linear"
-												dataKey="trashPercent"
-												name="Trash %"
+												dataKey="wastePercent"
+												name="Waste %"
 												stroke="#EC4899"
 												strokeWidth={2}
 												dot={false}

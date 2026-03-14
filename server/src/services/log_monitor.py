@@ -27,6 +27,25 @@ logger = get_logger(__name__)
 
 ALLOWED_LEVELS = {"DEBUG", "INFO", "WARN", "ERROR"}
 
+# Map new snake_case field names to legacy Title Case format for normalization
+_SNAKE_TO_TITLE = {
+    "action": "Action",
+    "piece_id": "Piece ID",
+    "satellite_id": "Satellite ID",
+    "size": "Size",
+    "offset": "Offset",
+    "remote_address": "Remote Address",
+    "process": "Process",
+    "total_audits": "Total Audits",
+    "successful_audits": "Successful Audits",
+    "audit_score": "Audit Score",
+    "online_score": "Online Score",
+    "suspension_score": "Suspension Score",
+    "audit_score_delta": "Audit Score Delta",
+    "online_score_delta": "Online Score Delta",
+    "suspension_score_delta": "Suspension Score Delta",
+}
+
 
 @dataclass(frozen=True)
 class FileSignature:
@@ -671,7 +690,8 @@ class LogMonitorService:
         """Normalize piecestore transfer events for downstream consumers."""
         action_text = str(payload.get("action") or "")
         details_obj = payload.get("details")
-        details = details_obj if isinstance(details_obj, dict) else {}
+        details_raw = details_obj if isinstance(details_obj, dict) else {}
+        details = self._normalize_details(details_raw)
         timestamp_value = payload.get("timestamp")
         normalized_timestamp = (
             timestamp_value.isoformat()
@@ -743,7 +763,8 @@ class LogMonitorService:
     ) -> Optional[Tuple[Dict[str, Any], Optional[ReputationCreate]]]:
         """Persist reputation service info records and extract reputation metrics."""
         details_obj = payload.get("details")
-        details = details_obj if isinstance(details_obj, dict) else {}
+        details_raw = details_obj if isinstance(details_obj, dict) else {}
+        details = self._normalize_details(details_raw)
 
         timestamp_value = payload.get("timestamp")
         normalized_timestamp = (
@@ -870,3 +891,22 @@ class LogMonitorService:
         """Produce a filesystem-friendly node identifier for log filenames."""
         sanitized = re.sub(r"[^A-Za-z0-9._-]+", "_", node_name.strip())
         return sanitized or "unknown"
+
+    @staticmethod
+    def _normalize_details(details: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize snake_case field names to Title Case for backward compatibility.
+        
+        Storj node logs changed from Title Case ("Piece ID", "Satellite ID") to
+        snake_case ("piece_id", "satellite_id") in newer versions. This normalizes
+        both formats to the legacy Title Case format used internally.
+        """
+        # Fast path: check if any snake_case keys are present
+        if not any(key in details for key in _SNAKE_TO_TITLE):
+            return details
+        
+        # Remap snake_case keys to Title Case
+        normalized = {}
+        for key, value in details.items():
+            normalized_key = _SNAKE_TO_TITLE.get(key, key)
+            normalized[normalized_key] = value
+        return normalized

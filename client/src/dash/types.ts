@@ -7,9 +7,11 @@ export interface DashSatellite {
 
 export interface DashDiskSpace {
   used: number;
+  usefull: number;
   available: number;
   trash: number;
   overused: number;
+  reclaimable: number;
 }
 
 export interface DashBandwidth {

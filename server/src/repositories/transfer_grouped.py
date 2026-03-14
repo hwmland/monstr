@@ -15,6 +15,9 @@ from ..core.logging import get_logger
 # module-level logger
 logger = get_logger(__name__)
 
+# SQLite SQLITE_LIMIT_VARIABLE_NUMBER is 999 on older builds; stay under it.
+_SQLITE_MAX_VARS = 999
+
 if TYPE_CHECKING:  # pragma: no cover - used only for type checking
     from ..models import Transfer
 from ..schemas import TransferGroupedCreate, TransferGroupedFilters
@@ -517,12 +520,19 @@ class TransferGroupedRepository:
         return dt
 
     async def delete_many_by_ids(self, ids: list[int]) -> None:
-        """Delete many TransferGrouped rows by id."""
+        """Delete many TransferGrouped rows by id.
+
+        Processes ``ids`` in chunks of at most ``_SQLITE_MAX_VARS`` to avoid
+        SQLite's ``too many SQL variables`` error (SQLITE_LIMIT_VARIABLE_NUMBER
+        defaults to 999 on older SQLite builds).
+        """
         if not ids:
             return
 
-        stmt = delete(TransferGrouped).where(TransferGrouped.id.in_(ids))
-        await self._session.execute(stmt)
+        for i in range(0, len(ids), _SQLITE_MAX_VARS):
+            chunk = ids[i : i + _SQLITE_MAX_VARS]
+            stmt = delete(TransferGrouped).where(TransferGrouped.id.in_(chunk))
+            await self._session.execute(stmt)
 
     async def delete_older_than(self, cutoff: datetime) -> int:
         """Delete TransferGrouped rows whose interval_end is older than cutoff.

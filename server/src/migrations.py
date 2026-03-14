@@ -258,6 +258,132 @@ def _migrate_8_to_9(conn: Connection) -> None:
     logger.info("Completed migration 8 -> 9")
 
 
+def _migrate_9_to_10(conn: Connection) -> None:
+    """Restructure DiskUsage table: drop max-tracking columns, rename columns, add new ones.
+
+    Column changes:
+    - OLD free_end       -> NEW capacity_end  (total disk capacity)
+    - OLD usage_end      -> NEW usefull_end   (useful/non-trash data only)
+    - trash_end          unchanged
+    - NEW usage_end      = OLD usage_end + OLD trash_end  (total used = useful + trash)
+    - NEW reclaimable_end = 0
+    - REMOVED: max_usage, trash_at_max_usage, max_trash, usage_at_max_trash, max_usage_at, max_trash_at
+    """
+    logger.info("Starting migration 9 -> 10: restructure DiskUsage table")
+
+    inspector = inspect(conn)
+    table_name = models.DiskUsage.__table__.name
+    if not inspector.has_table(table_name):
+        logger.info("Skipping DiskUsage restructure: table %s does not exist", table_name)
+        return
+
+    # Check if this table still has the OLD schema by looking for the 'free_end' column.
+    # On a fresh database the table is already created with the new schema via migration 4→5,
+    # so this migration would be a no-op.
+    existing_columns = {col["name"] for col in inspector.get_columns(table_name)}
+    if "free_end" not in existing_columns:
+        logger.info(
+            "DiskUsage table already has new schema (no 'free_end' column), skipping migration 9 -> 10"
+        )
+        return
+
+    # Collect existing indexes BEFORE renaming the table (inspector queries by name).
+    existing_indexes = inspector.get_indexes(table_name)
+
+    temp_table = f"{table_name}__old"
+    conn.execute(text(f'ALTER TABLE "{table_name}" RENAME TO "{temp_table}"'))
+    logger.info("Renamed %s -> %s", table_name, temp_table)
+
+    # Drop any indexes that belonged to the old table
+    for index in existing_indexes:
+        index_name = index.get("name")
+        if index_name:
+            conn.execute(text(f'DROP INDEX IF EXISTS "{index_name}"'))
+            logger.info("Dropped index %s", index_name)
+
+    # Create new table from updated model definition
+    models.DiskUsage.__table__.create(conn)
+    logger.info("Created new %s table", table_name)
+
+    # Copy and transform data from old table:
+    #   capacity_end  <- free_end
+    #   usefull_end   <- usage_end  (old column - useful data portion)
+    #   trash_end     <- trash_end  (unchanged)
+    #   usage_end     <- usage_end + trash_end  (new: total = useful + trash)
+    #   reclaimable_end <- 0
+    result = conn.execute(
+        text(
+            f'INSERT INTO "{table_name}" '
+            f'("source", "period", "capacity_end", "usefull_end", "trash_end", "usage_end", "reclaimable_end") '
+            f'SELECT "source", "period", "free_end", "usage_end", "trash_end", '
+            f'"usage_end" + "trash_end", 0 '
+            f'FROM "{temp_table}"'
+        )
+    )
+    migrated_count = getattr(result, "rowcount", 0) or 0
+    logger.info("Migrated %d DiskUsage rows", migrated_count)
+
+    conn.execute(text(f'DROP TABLE "{temp_table}"'))
+    logger.info("Dropped temporary table %s", temp_table)
+
+    logger.info("Completed migration 9 -> 10")
+
+    inspector = inspect(conn)
+    table_name = models.TransferGrouped.__table__.name
+    if not inspector.has_table(table_name):
+        logger.info("Skipping migration: table %s does not exist", table_name)
+        return
+
+    # Drop individual indexes that are now superseded by the composite index.
+    for old_index in (
+        f"ix_{table_name}_interval_start",
+        f"ix_{table_name}_interval_end",
+        f"ix_{table_name}_granularity",
+    ):
+        conn.execute(text(f'DROP INDEX IF EXISTS "{old_index}"'))
+        logger.info("Dropped index %s (if it existed)", old_index)
+
+    # Create composite index covering the primary query pattern:
+    # WHERE granularity=? AND size_class=? AND interval_start >= ? AND interval_end <= ?
+    composite_name = f"ix_{table_name}_gran_sc_start_end"
+    conn.execute(
+        text(
+            f'CREATE INDEX IF NOT EXISTS "{composite_name}" ON "{table_name}" '
+            f'("granularity", "size_class", "interval_start", "interval_end")'
+        )
+    )
+    logger.info("Created composite index %s", composite_name)
+
+    # Backfill size_class='all' for granularities > 1 by aggregating existing rows.
+    metric_cols = (
+        "size_dl_succ_nor", "size_ul_succ_nor", "size_dl_fail_nor", "size_ul_fail_nor",
+        "size_dl_succ_rep", "size_ul_succ_rep", "size_dl_fail_rep", "size_ul_fail_rep",
+        "count_dl_succ_nor", "count_ul_succ_nor", "count_dl_fail_nor", "count_ul_fail_nor",
+        "count_dl_succ_rep", "count_ul_succ_rep", "count_dl_fail_rep", "count_ul_fail_rep",
+    )
+
+    sum_clauses = ", ".join(f'SUM("{c}")' for c in metric_cols)
+    insert_cols = ", ".join(
+        ['"source"', '"satellite_id"', '"interval_start"', '"interval_end"',
+         '"size_class"', '"granularity"']
+        + [f'"{c}"' for c in metric_cols]
+    )
+
+    backfill_sql = (
+        f'INSERT INTO "{table_name}" ({insert_cols}) '
+        f'SELECT "source", "satellite_id", "interval_start", "interval_end", '
+        f"'all', \"granularity\", {sum_clauses} "
+        f'FROM "{table_name}" '
+        f'WHERE "granularity" > 1 AND "size_class" != \'all\' '
+        f'GROUP BY "source", "satellite_id", "interval_start", "interval_end", "granularity"'
+    )
+    result = conn.execute(text(backfill_sql))
+    backfill_count = getattr(result, "rowcount", 0) or 0
+    logger.info("Backfilled %d size_class='all' rows for granularities > 1", backfill_count)
+
+    logger.info("Completed migration 8 -> 9")
+
+
 MigrationFunc = type(_migrate_0_to_1)
 
 MIGRATIONS = (
@@ -270,6 +396,7 @@ MIGRATIONS = (
     _migrate_6_to_7,
     _migrate_7_to_8,
     _migrate_8_to_9,
+    _migrate_9_to_10,
 )
 LATEST_SCHEMA_VERSION = len(MIGRATIONS)
 

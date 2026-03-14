@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import urllib.parse
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -9,6 +10,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from ...config import Settings, SourceDefinition
 from ...schemas import DashStorjNodeStatistics, DashStorjNodeStatus
 from ...core.logging import get_logger
+from ... import database
+from ...repositories.disk_usage import DiskUsageRepository
 
 router = APIRouter(prefix="/api/dash", tags=["dash"])
 logger = get_logger(__name__)
@@ -72,6 +75,28 @@ async def dash_node_info(
         data["walletFeatures"] = ["Censored"]
     except Exception:
         logger.warning("Failed to censor node-info response", exc_info=True)
+
+    # Override diskSpace with our DB values which are correctly normalised
+    # regardless of the Storj API format the node uses.
+    try:
+        period = datetime.now(timezone.utc).date().isoformat()
+        async with database.SessionFactory() as session:
+            repo = DiskUsageRepository(session)
+            record = await repo.get_by_source_period(node_name, period)
+            if record is not None:
+                overused = 0
+                if isinstance(data.get("diskSpace"), dict):
+                    overused = data["diskSpace"].get("overused", 0)
+                data["diskSpace"] = {
+                    "used": record.usage_end,
+                    "usefull": record.usefull_end,
+                    "available": record.capacity_end,
+                    "trash": record.trash_end,
+                    "overused": overused,
+                    "reclaimable": record.reclaimable_end,
+                }
+    except Exception:
+        logger.warning("Failed to override diskSpace from DB for node %s", node_name, exc_info=True)
 
     return data
 

@@ -70,9 +70,11 @@ async def usage_change(
     current_map: Dict[str, DiskUsageChangeNode] = {}
     for record in current_records:
         current_map[record.source] = DiskUsageChangeNode(
-            free_end=record.free_end,
-            usage_end=record.usage_end,
+            capacity_end=record.capacity_end,
+            usefull_end=record.usefull_end,
             trash_end=record.trash_end,
+            usage_end=record.usage_end,
+            reclaimable_end=record.reclaimable_end,
         )
 
     reference_map = {record.source: record for record in reference_records}
@@ -87,21 +89,29 @@ async def usage_change(
         current_metrics = current_map.get(node_name)
         reference_metrics = reference_map.get(node_name)
 
-        current_free = current_metrics.free_end if current_metrics else 0
-        current_usage = current_metrics.usage_end if current_metrics else 0
+        current_capacity = current_metrics.capacity_end if current_metrics else 0
+        current_usefull = current_metrics.usefull_end if current_metrics else 0
         current_trash = current_metrics.trash_end if current_metrics else 0
+        current_usage = current_metrics.usage_end if current_metrics else 0
+        current_reclaimable = current_metrics.reclaimable_end if current_metrics else 0
 
-        reference_free = reference_metrics.free_end if reference_metrics else 0
-        reference_usage = reference_metrics.usage_end if reference_metrics else 0
+        reference_capacity = reference_metrics.capacity_end if reference_metrics else 0
+        reference_usefull = reference_metrics.usefull_end if reference_metrics else 0
         reference_trash = reference_metrics.trash_end if reference_metrics else 0
+        reference_usage = reference_metrics.usage_end if reference_metrics else 0
+        reference_reclaimable = reference_metrics.reclaimable_end if reference_metrics else 0
 
         metrics = DiskUsageChangeNode(
-            free_end=current_free,
-            usage_end=current_usage,
+            capacity_end=current_capacity,
+            usefull_end=current_usefull,
             trash_end=current_trash,
-            free_change=current_free - reference_free,
-            usage_change=current_usage - reference_usage,
+            usage_end=current_usage,
+            reclaimable_end=current_reclaimable,
+            capacity_change=current_capacity - reference_capacity,
+            usefull_change=current_usefull - reference_usefull,
             trash_change=current_trash - reference_trash,
+            usage_change=current_usage - reference_usage,
+            reclaimable_change=current_reclaimable - reference_reclaimable,
         )
 
         nodes_result[node_name] = metrics
@@ -131,27 +141,14 @@ async def usage(
     periods_map: Dict[str, Dict[str, DiskUsageUsageNode]] = {}
 
     for record in records:
-        # Determine metrics based on the requested mode.
-        if payload.mode == "maxUsage":
-            usage_value = record.max_usage
-            trash_value = record.trash_at_max_usage
-            at_value = record.max_usage_at
-        elif payload.mode == "maxTrash":
-            usage_value = record.usage_at_max_trash
-            trash_value = record.max_trash
-            at_value = record.max_trash_at
-        else:  # "end"
-            usage_value = record.usage_end
-            trash_value = record.trash_end
-            at_value = _period_str_to_datetime(record.period)
-
-        if at_value.tzinfo is None:
-            at_value = at_value.replace(tzinfo=timezone.utc)
+        at_value = _period_str_to_datetime(record.period)
 
         node_metrics = DiskUsageUsageNode(
-            capacity=record.free_end,
-            usage=usage_value,
-            trash=trash_value,
+            capacity=record.capacity_end,
+            usefull=record.usefull_end,
+            usage=record.usage_end,
+            trash=record.trash_end,
+            reclaimable=record.reclaimable_end,
             at=at_value,
         )
 

@@ -40,14 +40,18 @@ const normalizeSatellite = (value: unknown): DashSatellite | null => {
 
 const normalizeDiskSpace = (value: unknown): DashDiskSpace => {
   if (!value || typeof value !== "object") {
-    return { used: 0, available: 0, trash: 0, overused: 0 };
+    return { used: 0, usefull: 0, available: 0, trash: 0, overused: 0, reclaimable: 0 };
   }
   const record = value as Record<string, unknown>;
+  // New Storj API uses "allocated" instead of "available"
+  const available = toNumber(record.allocated ?? record.available);
   return {
     used: toNumber(record.used),
-    available: toNumber(record.available),
+    usefull: toNumber(record.usefull),
+    available,
     trash: toNumber(record.trash),
     overused: toNumber(record.overused),
+    reclaimable: toNumber(record.reclaimable),
   };
 };
 

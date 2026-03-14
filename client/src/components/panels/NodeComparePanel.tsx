@@ -449,7 +449,7 @@ const NodeComparePanel: FC<NodeComparePanelProps> = ({ selectedNodes }) => {
     }
 
     const nodes = usageChange.nodes ?? {};
-    // Split usage deltas into negative (inner ring) and positive (outer ring) slices.
+    // Split usefull deltas into negative (inner ring) and positive (outer ring) slices.
     const negativeSlicesRaw: ChartSlice[] = [];
     const positiveSlicesRaw: ChartSlice[] = [];
     const legendNodes = new Set<string>();
@@ -459,7 +459,7 @@ const NodeComparePanel: FC<NodeComparePanelProps> = ({ selectedNodes }) => {
         continue;
       }
 
-      const change = Number(metrics.usageChange ?? 0);
+      const change = Number(metrics.usefullChange ?? 0);
       if (!Number.isFinite(change) || change === 0) {
         continue;
       }
@@ -513,23 +513,23 @@ const NodeComparePanel: FC<NodeComparePanelProps> = ({ selectedNodes }) => {
     };
 
     const innerSlices = negativeTotal > 0
-      ? normalizeSlices(negativeSlicesRaw, negativeTotal, "usage-negative-placeholder")
+      ? normalizeSlices(negativeSlicesRaw, negativeTotal, "usefull-negative-placeholder")
       : [];
     const outerSlices = positiveTotal > 0
-      ? normalizeSlices(positiveSlicesRaw, positiveTotal, "usage-positive-placeholder")
+      ? normalizeSlices(positiveSlicesRaw, positiveTotal, "usefull-positive-placeholder")
       : [];
 
     return {
       config: {
-        id: "usage-change",
-        label: "Usage Change",
+        id: "usefull-change",
+        label: "Usefull Change",
         type: "dual",
         innerSlices,
         innerTotal: negativeTotal,
         outerSlices,
         outerTotal: positiveTotal,
         formatValue: formatUsageChangeMetric,
-        tooltipLabel: "Usage",
+        tooltipLabel: "Usefull",
       } as DualRingChartConfig,
       legendNodes: Array.from(legendNodes),
       hasData: innerSlices.length > 0 || outerSlices.length > 0,
@@ -552,7 +552,7 @@ const NodeComparePanel: FC<NodeComparePanelProps> = ({ selectedNodes }) => {
     totalsEntries.forEach(([node, totals], index) => {
       const metrics = usageByNode[node];
       if (!metrics) return;
-      const change = Number(metrics.usageChange ?? 0);
+      const change = Number(metrics.usefullChange ?? 0);
       if (!Number.isFinite(change) || change === 0) return;
 
         const uploadSize = (totals.sizeUlSuccNor ?? 0) + (totals.sizeUlSuccRep ?? 0);
@@ -613,7 +613,7 @@ const NodeComparePanel: FC<NodeComparePanelProps> = ({ selectedNodes }) => {
         outerSlices,
         outerTotal: positiveTotal,
         formatValue: formatPercentMetric,
-        tooltipLabel: "UL / UsageChange",
+        tooltipLabel: "UL / UsefullChange",
       } as DualRingChartConfig,
       legendNodes: Array.from(legendNodes),
       hasData: innerSlices.length > 0 || outerSlices.length > 0,
@@ -634,10 +634,10 @@ const NodeComparePanel: FC<NodeComparePanelProps> = ({ selectedNodes }) => {
         return;
       }
 
-      const usageEnd = Number(usageMetrics.usageEnd ?? 0);
-      const usageChangeValue = Number(usageMetrics.usageChange ?? 0);
-      // Use midpoint between start and end usage as a stable baseline for the ratio.
-      const averageUsage = usageEnd - usageChangeValue / 2;
+      const usefullEnd = Number(usageMetrics.usefullEnd ?? 0);
+      const usefullChangeValue = Number(usageMetrics.usefullChange ?? 0);
+      // Use midpoint between start and end usefull as a stable baseline for the ratio.
+      const averageUsage = usefullEnd - usefullChangeValue / 2;
       if (!(averageUsage > 0)) {
         return;
       }
@@ -680,7 +680,7 @@ const NodeComparePanel: FC<NodeComparePanelProps> = ({ selectedNodes }) => {
       slices,
       total: totalRatio,
       formatValue: formatPercentMetric,
-      tooltipLabel: "Download / Usage",
+      tooltipLabel: "Download / Usefull",
     };
   }, [colorByNode, interval, totalsEntries, usageChange]);
 
@@ -695,10 +695,10 @@ const NodeComparePanel: FC<NodeComparePanelProps> = ({ selectedNodes }) => {
     totalsEntries.forEach(([node], index) => {
       const usageMetrics = usageByNode[node];
       if (!usageMetrics) return;
-      const usageEnd = Number(usageMetrics.usageEnd ?? 0);
-      if (!(usageEnd > 0)) return;
+      const usefullEnd = Number(usageMetrics.usefullEnd ?? 0);
+      if (!(usefullEnd > 0)) return;
       const color = colorByNode.get(node) ?? NODE_PALETTE[index % NODE_PALETTE.length];
-      slices.push({ name: node, value: usageEnd, color, rawValue: usageEnd });
+      slices.push({ name: node, value: usefullEnd, color, rawValue: usefullEnd });
     });
 
     if (slices.length === 0) return null;
@@ -711,11 +711,11 @@ const NodeComparePanel: FC<NodeComparePanelProps> = ({ selectedNodes }) => {
 
     return {
       id: "node-size",
-      label: "Node Size",
+      label: "Node Usefull Size",
       slices,
       total,
       formatValue: formatUsageChangeMetric,
-      tooltipLabel: "Size",
+      tooltipLabel: "Usefull Size",
     };
   }, [colorByNode, interval, totalsEntries, usageChange, formatUsageChangeMetric]);
 
