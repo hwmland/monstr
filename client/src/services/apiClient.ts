@@ -18,6 +18,8 @@ import type {
   DiskUsageUsageNode,
   DiskUsageUsageResponse,
   IP24StatusResponse,
+  SatelliteUsageRecord,
+  SatelliteUsageResponse,
 } from "../types";
 
 const DEFAULT_API_BASE_URL = import.meta.env.DEV ? "http://localhost:8000/api" : "/api";
@@ -422,6 +424,53 @@ export const fetchDiskUsageUsage = async (
       }
 
       periods[period] = nodesMap;
+    }
+  }
+
+  return { periods };
+};
+
+export const fetchSatelliteUsage = async (
+  nodes: string[],
+  numberOfPeriods: number,
+): Promise<SatelliteUsageResponse> => {
+  const response = await apiClient.post("/satelliteusage/usage", { nodes, numberOfPeriods });
+  const raw = response.data ?? {};
+
+  const periodsRaw = (raw as Record<string, unknown>).periods;
+  const periods: SatelliteUsageResponse["periods"] = {};
+
+  if (periodsRaw && typeof periodsRaw === "object") {
+    for (const [period, records] of Object.entries(periodsRaw as Record<string, unknown>)) {
+      if (!Array.isArray(records)) {
+        continue;
+      }
+
+      const normalized: SatelliteUsageRecord[] = [];
+      for (const entry of records) {
+        if (!entry || typeof entry !== "object") {
+          continue;
+        }
+
+        const item = entry as Record<string, unknown>;
+        const diskRaw = item.diskUsage ?? item.disk_usage;
+        normalized.push({
+          source: String(item.source ?? ""),
+          satelliteId: String(item.satelliteId ?? item.satellite_id ?? ""),
+          period: String(item.period ?? ""),
+          dlUsage: toNumeric(item.dlUsage ?? item.dl_usage),
+          dlRepair: toNumeric(item.dlRepair ?? item.dl_repair),
+          dlAudit: toNumeric(item.dlAudit ?? item.dl_audit),
+          ulUsage: toNumeric(item.ulUsage ?? item.ul_usage),
+          ulRepair: toNumeric(item.ulRepair ?? item.ul_repair),
+          delete: toNumeric(item.delete),
+          diskUsage: diskRaw != null ? toNumeric(diskRaw) : undefined,
+        });
+      }
+
+      if (normalized.length > 0) {
+        periods[period] = normalized;
+      }
     }
   }
 

@@ -11,6 +11,7 @@ import PanelControls, { getStoredSelection } from "../PanelControls";
 import PanelControlsButton from "../PanelControlsButton";
 import PanelControlsCombo from "../PanelControlsCombo";
 import { use24hTime } from "../../utils/time";
+import { COLOR_DOWNLOAD, COLOR_UPLOAD } from "../../constants/colors";
 import Legend from "../Legend";
 
 type Mode = "size" | "count" | "speed";
@@ -448,7 +449,7 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
                 <Bar
                   dataKey="dl"
                   {...barSizingProps}
-                  fill="#10784A"
+                  fill={COLOR_DOWNLOAD}
                   name="Download"
                   isAnimationActive={false}
                   onMouseMove={() => setHoverSeries((prev) => (prev === 'dl' ? prev : 'dl'))}
@@ -461,7 +462,7 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
                 <Bar
                   dataKey="ul"
                   {...barSizingProps}
-                  fill="#34D399"
+                  fill={COLOR_UPLOAD}
                   name="Upload"
                   isAnimationActive={false}
                   onMouseMove={() => setHoverSeries((prev) => (prev === 'ul' ? prev : 'ul'))}
@@ -474,7 +475,7 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
                 {layout === 'grouped' && groupedAverages.dl != null ? (
                   <ReferenceLine
                     y={groupedAverages.dl}
-                    stroke="#10784A"
+                    stroke={COLOR_DOWNLOAD}
                     strokeWidth={1}
                     ifOverflow="extendDomain"
                   />
@@ -482,7 +483,7 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
                 {layout === 'grouped' && groupedAverages.ul != null ? (
                   <ReferenceLine
                     y={groupedAverages.ul}
-                    stroke="#34D399"
+                    stroke={COLOR_UPLOAD}
                     strokeWidth={1}
                     ifOverflow="extendDomain"
                   />
@@ -493,7 +494,7 @@ const AccumulatedTrafficPanel: FC<AccumulatedTrafficPanelProps> = ({ selectedNod
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <Legend items={[{ label: 'Download', color: '#10784A' }, { label: 'Upload', color: '#34D399' }]} />
+            <Legend items={[{ label: 'Download', color: COLOR_DOWNLOAD }, { label: 'Upload', color: COLOR_UPLOAD }]} />
             </>
         )}
       </div>

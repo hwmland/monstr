@@ -641,6 +641,29 @@ class SatelliteUsageRead(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
+class SatelliteUsageRequest(BaseModel):
+    nodes: list[str] = Field(
+        default_factory=list,
+        description="Nodes to include; empty means all nodes.",
+    )
+    number_of_periods: int = Field(
+        default=12,
+        ge=1,
+        le=1000,
+        serialization_alias="numberOfPeriods",
+        validation_alias="numberOfPeriods",
+        description="Number of most recent periods to return.",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class SatelliteUsageResponse(BaseModel):
+    periods: dict[str, list[SatelliteUsageRead]] = Field(default_factory=dict)
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
 # Dash / node-api passthrough schemas (mirrors dashstorj shared ApiTypes)
 class DashStorjSatellite(BaseModel):
     id: str

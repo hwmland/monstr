@@ -31,6 +31,7 @@ const DEFAULT_PANELS: Record<string, boolean> = {
   accumulatedTraffic: true,
   longTerm: false,
   diskUsage: false,
+  bandwidthUsage: false,
 };
 
 const usePanelVisibilityStore = create<PanelVisibilityState>((set, get) => ({

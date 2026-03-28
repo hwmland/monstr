@@ -477,6 +477,80 @@ select.button option:disabled {
   color: var(--color-text);
 }
 
+/* ── Node Selection Help overlay ────────────────────────────────────── */
+
+.node-help {
+  width: min(320px, 90vw);
+  max-width: 320px;
+}
+
+.node-help__title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.node-help__separator {
+  height: 2px;
+  background: rgba(148, 163, 184, 0.4);
+  margin: 6px 0;
+  border-radius: 2px;
+}
+
+.node-help__section-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  margin-bottom: 4px;
+}
+
+.node-help__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.node-help__item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--color-text);
+}
+
+.node-help__item--block {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.node-help__item--block strong {
+  color: var(--color-text);
+}
+
+.node-help__key {
+  flex-shrink: 0;
+  display: inline-block;
+  background: rgba(148, 163, 184, 0.15);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.75rem;
+  font-family: inherit;
+  white-space: nowrap;
+  color: var(--color-text);
+}
+
+.node-help__desc em {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
 .panel__status,
 .panel__empty {
   margin: 0;

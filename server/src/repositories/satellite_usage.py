@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional, Sequence
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,5 +28,24 @@ class SatelliteUsageRepository:
             SatelliteUsage.source,
             SatelliteUsage.satellite_id,
         ).limit(filters.limit)
+        result = await self.session.execute(stmt)
+        return [row[0] for row in result.fetchall()]
+
+    async def list_from_period(
+        self,
+        start_period: str,
+        sources: Optional[Sequence[str]] = None,
+    ) -> List[SatelliteUsage]:
+        """Return satellite usage records with period >= start_period."""
+
+        stmt = select(SatelliteUsage).where(SatelliteUsage.period >= start_period)
+        if sources:
+            stmt = stmt.where(SatelliteUsage.source.in_(sources))
+
+        stmt = stmt.order_by(
+            SatelliteUsage.period.desc(),
+            SatelliteUsage.source,
+            SatelliteUsage.satellite_id,
+        )
         result = await self.session.execute(stmt)
         return [row[0] for row in result.fetchall()]

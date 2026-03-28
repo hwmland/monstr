@@ -63,6 +63,16 @@ Each dashboard panel in `components/panels/` follows a consistent structure:
 
 5. **PanelHeader composition** — panels use `PanelHeader` with `title`, `subtitle` (via `PanelSubtitle`), `onRefresh`, `isRefreshing`, and optional `controls` (using `PanelControls` + `PanelControlsButton`).
 
+6. **Control state persistence** — panel controls (interval, layout mode, toggles) persist selections to `localStorage` using keys prefixed `monstr.panel.<PanelName>.<control>`. Initialise with `getStoredSelection<T>(key, allowedValues, default)` from `PanelControls`. For mutually-exclusive button groups, pass `storageKey` prop to `PanelControls` for automatic persistence. For checkboxes/booleans, persist manually in the change handler.
+
+7. **Auto-refresh** — panels set up periodic refresh via `window.setInterval` (typically 600,000 ms = 10 min) inside a `useEffect`, with `clearInterval` cleanup on unmount. Guard the refresh with `if (!visible) return;`.
+
+8. **`requestNodes` normalisation** — every panel that receives or reads `selectedNodes` normalises the "All" selection to an empty array for the backend: `selectedNodes.includes("All") ? [] : selectedNodes.filter(n => n !== "All")`.
+
+9. **Reusable summary panes** — for totals/summary displays beside charts, reuse the `longterm-summary` CSS classes (`.longterm-summary`, `.longterm-summary__item`, `__label`, `__value`). These render as a flex-wrap row of rounded cards with a label and a value.
+
+10. **Dual Y-axis ComposedChart** — when mixing series types (e.g., bars + areas, or lines at different scales), use `yAxisId` strings on every `<YAxis>` and every series component. Common pattern: left axis for primary data, right axis for secondary/accumulated data.
+
 ### State Management
 
 - **Zustand stores** in `store/` — one file per store, named `use*Store.ts`.
@@ -131,14 +141,17 @@ Imports follow this sequence (separated by blank lines):
 - **Pattern**: `describe` + `it` blocks; render components inside `<BrowserRouter>`.
 - **Run**: `npm test` from the `client/` directory.
 
-## Adding a New Feature Checklist
+## Adding a New Panel Checklist
 
 1. **Types** — add/update interfaces in `types/index.ts` for new API shapes.
 2. **API client** — add or update the fetch function in `services/apiClient.ts`; defensively normalise both camelCase and snake_case fields.
-3. **Component** — create or update the panel/component; follow the established panel pattern.
-4. **Store** — add a Zustand store in `store/` only if state needs to be shared across components; otherwise use local `useState`.
-5. **Constants** — update `constants/` if new static lookup data is needed.
-6. **Tests** — add tests; run `npm test`.
+3. **Component** — create or update the panel in `components/panels/`; follow the established panel pattern.
+4. **Panel visibility store** — add the panel key (e.g., `myPanel: false`) to `DEFAULT_PANELS` in `store/usePanelVisibility.ts`.
+5. **Settings toggle** — add a checkbox entry in `components/Settings.tsx` toggling the new panel key.
+6. **Home page layout** — import the panel in `pages/Home.tsx`, add an `isVisible()` check, and render it in the correct position among existing panels.
+7. **Store** — add a Zustand store in `store/` only if state needs to be shared across components; otherwise use local `useState`.
+8. **Constants** — update `constants/` if new static lookup data is needed.
+9. **Tests** — add tests; run `npm test`.
 
 ## Per-Source / Per-Node Data Handling
 
