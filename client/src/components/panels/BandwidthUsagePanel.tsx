@@ -14,6 +14,7 @@ import {
 
 import { fetchSatelliteUsage } from "../../services/apiClient";
 import createRequestDeduper from "../../utils/requestDeduper";
+import { COLOR_DOWNLOAD, COLOR_DOWNLOAD_FILL, COLOR_DOWNLOAD_REPAIR, COLOR_DL_AUDIT, COLOR_UPLOAD, COLOR_UPLOAD_FILL, COLOR_UPLOAD_REPAIR } from "../../constants/colors";
 import usePanelVisibilityStore from "../../store/usePanelVisibility";
 import { formatSizeValue, pickSizeUnit } from "../../utils/units";
 import type { SatelliteUsageRecord } from "../../types";
@@ -528,7 +529,7 @@ const BandwidthUsagePanel: FC<BandwidthUsagePanelProps> = ({ selectedNodes }) =>
                         dataKey="ulUsage"
                         name="UL Usage"
                         stackId={stackMode === "stack" ? "bw" : "ul"}
-                        fill="rgba(52, 211, 153, 0.85)"
+                        fill={COLOR_UPLOAD}
                         isAnimationActive={false}
                       />
                       <Bar
@@ -536,7 +537,7 @@ const BandwidthUsagePanel: FC<BandwidthUsagePanelProps> = ({ selectedNodes }) =>
                         dataKey="ulRepair"
                         name="UL Repair"
                         stackId={stackMode === "stack" ? "bw" : "ul"}
-                        fill="rgba(249, 115, 22, 0.85)"
+                        fill={COLOR_UPLOAD_REPAIR}
                         isAnimationActive={false}
                       />
                       <Bar
@@ -544,7 +545,7 @@ const BandwidthUsagePanel: FC<BandwidthUsagePanelProps> = ({ selectedNodes }) =>
                         dataKey="dlUsage"
                         name="DL Usage"
                         stackId={stackMode === "stack" ? "bw" : "dl"}
-                        fill="rgba(56, 189, 248, 0.85)"
+                        fill={COLOR_DOWNLOAD}
                         isAnimationActive={false}
                       />
                       <Bar
@@ -552,7 +553,7 @@ const BandwidthUsagePanel: FC<BandwidthUsagePanelProps> = ({ selectedNodes }) =>
                         dataKey="dlRepair"
                         name="DL Repair"
                         stackId={stackMode === "stack" ? "bw" : "dl"}
-                        fill="rgba(248, 113, 113, 0.85)"
+                        fill={COLOR_DOWNLOAD_REPAIR}
                         isAnimationActive={false}
                       />
                       <Bar
@@ -560,7 +561,7 @@ const BandwidthUsagePanel: FC<BandwidthUsagePanelProps> = ({ selectedNodes }) =>
                         dataKey="dlAudit"
                         name="DL Audit"
                         stackId={stackMode === "stack" ? "bw" : "dl"}
-                        fill="rgba(167, 139, 250, 0.85)"
+                        fill={COLOR_DL_AUDIT}
                         isAnimationActive={false}
                       />
                     </>
@@ -571,7 +572,7 @@ const BandwidthUsagePanel: FC<BandwidthUsagePanelProps> = ({ selectedNodes }) =>
                         dataKey="upload"
                         name="Upload"
                         stackId={stackMode === "stack" ? "bw" : undefined}
-                        fill="rgba(52, 211, 153, 0.85)"
+                        fill={COLOR_UPLOAD}
                         isAnimationActive={false}
                       />
                       <Bar
@@ -579,7 +580,7 @@ const BandwidthUsagePanel: FC<BandwidthUsagePanelProps> = ({ selectedNodes }) =>
                         dataKey="download"
                         name="Download"
                         stackId={stackMode === "stack" ? "bw" : undefined}
-                        fill="rgba(56, 189, 248, 0.85)"
+                        fill={COLOR_DOWNLOAD}
                         isAnimationActive={false}
                       />
                     </>
@@ -591,8 +592,8 @@ const BandwidthUsagePanel: FC<BandwidthUsagePanelProps> = ({ selectedNodes }) =>
                     type="monotone"
                     dataKey="accUpload"
                     name="Acc. Upload"
-                    stroke="rgba(52, 211, 153, 0.85)"
-                    fill="rgba(52, 211, 153, 0.12)"
+                    stroke={COLOR_UPLOAD}
+                    fill={COLOR_UPLOAD_FILL}
                     strokeWidth={2}
                     dot={false}
                     isAnimationActive={false}
@@ -602,8 +603,8 @@ const BandwidthUsagePanel: FC<BandwidthUsagePanelProps> = ({ selectedNodes }) =>
                     type="monotone"
                     dataKey="accDownload"
                     name="Acc. Download"
-                    stroke="rgba(56, 189, 248, 0.85)"
-                    fill="rgba(56, 189, 248, 0.12)"
+                    stroke={COLOR_DOWNLOAD}
+                    fill={COLOR_DOWNLOAD_FILL}
                     strokeWidth={2}
                     dot={false}
                     isAnimationActive={false}

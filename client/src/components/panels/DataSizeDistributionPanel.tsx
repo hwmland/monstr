@@ -13,6 +13,7 @@ import {
 
 import { fetchDataDistribution } from "../../services/apiClient";
 import createRequestDeduper from "../../utils/requestDeduper";
+import { COLOR_DOWNLOAD, COLOR_DOWNLOAD_REPAIR, COLOR_UPLOAD, COLOR_UPLOAD_REPAIR } from "../../constants/colors";
 import Legend from "../Legend";
 import { formatSizeValue, pickSizeUnit } from "../../utils/units";
 // PanelSubtitle will format timestamps according to user preference
@@ -316,10 +317,10 @@ const DataSizeDistributionPanel: FC<DataSizeDistributionPanelProps> = ({ selecte
                   )}
                 />
                 
-                <Bar dataKey={mode === "size" ? "downloadNormalSize" : mode === "count" ? "downloadNormalSuccess" : mode === "sizePercent" ? "downloadNormalSizePct" : "downloadNormalSuccessPct"} stackId="dl" fill="#10784A" isAnimationActive={false} />
-                <Bar dataKey={mode === "size" ? "downloadRepairSize" : mode === "count" ? "downloadRepairSuccess" : mode === "sizePercent" ? "downloadRepairSizePct" : "downloadRepairSuccessPct"} stackId="dl" fill="#34D399" isAnimationActive={false} />
-                <Bar dataKey={mode === "size" ? "downloadNormalFailSize" : mode === "count" ? "downloadNormalFail" : mode === "sizePercent" ? "downloadNormalFailSizePct" : "downloadNormalFailPct"} stackId="dl" fill="#EF4444" isAnimationActive={false} />
-                <Bar dataKey={mode === "size" ? "downloadRepairFailSize" : mode === "count" ? "downloadRepairFail" : mode === "sizePercent" ? "downloadRepairFailSizePct" : "downloadRepairFailPct"} stackId="dl" fill="#F97316" isAnimationActive={false} />
+                <Bar dataKey={mode === "size" ? "downloadNormalSize" : mode === "count" ? "downloadNormalSuccess" : mode === "sizePercent" ? "downloadNormalSizePct" : "downloadNormalSuccessPct"} stackId="dl" fill={COLOR_DOWNLOAD} isAnimationActive={false} />
+                <Bar dataKey={mode === "size" ? "downloadRepairSize" : mode === "count" ? "downloadRepairSuccess" : mode === "sizePercent" ? "downloadRepairSizePct" : "downloadRepairSuccessPct"} stackId="dl" fill={COLOR_DOWNLOAD_REPAIR} isAnimationActive={false} />
+                <Bar dataKey={mode === "size" ? "downloadNormalFailSize" : mode === "count" ? "downloadNormalFail" : mode === "sizePercent" ? "downloadNormalFailSizePct" : "downloadNormalFailPct"} stackId="dl" fill="#F97316" isAnimationActive={false} />
+                <Bar dataKey={mode === "size" ? "downloadRepairFailSize" : mode === "count" ? "downloadRepairFail" : mode === "sizePercent" ? "downloadRepairFailSizePct" : "downloadRepairFailPct"} stackId="dl" fill="#EF4444" isAnimationActive={false} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -351,20 +352,22 @@ const DataSizeDistributionPanel: FC<DataSizeDistributionPanelProps> = ({ selecte
                   )}
                 />
                 
-                <Bar dataKey={mode === "size" ? "uploadNormalSize" : mode === "count" ? "uploadNormalSuccess" : mode === "sizePercent" ? "uploadNormalSizePct" : "uploadNormalSuccessPct"} stackId="ul" fill="#10784A" isAnimationActive={false} />
-                <Bar dataKey={mode === "size" ? "uploadRepairSize" : mode === "count" ? "uploadRepairSuccess" : mode === "sizePercent" ? "uploadRepairSizePct" : "uploadRepairSuccessPct"} stackId="ul" fill="#34D399" isAnimationActive={false} />
-                <Bar dataKey={mode === "size" ? "uploadNormalFailSize" : mode === "count" ? "uploadNormalFail" : mode === "sizePercent" ? "uploadNormalFailSizePct" : "uploadNormalFailPct"} stackId="ul" fill="#EF4444" isAnimationActive={false} />
-                <Bar dataKey={mode === "size" ? "uploadRepairFailSize" : mode === "count" ? "uploadRepairFail" : mode === "sizePercent" ? "uploadRepairFailSizePct" : "uploadRepairFailPct"} stackId="ul" fill="#F97316" isAnimationActive={false} />
+                <Bar dataKey={mode === "size" ? "uploadNormalSize" : mode === "count" ? "uploadNormalSuccess" : mode === "sizePercent" ? "uploadNormalSizePct" : "uploadNormalSuccessPct"} stackId="ul" fill={COLOR_UPLOAD} isAnimationActive={false} />
+                <Bar dataKey={mode === "size" ? "uploadRepairSize" : mode === "count" ? "uploadRepairSuccess" : mode === "sizePercent" ? "uploadRepairSizePct" : "uploadRepairSuccessPct"} stackId="ul" fill={COLOR_UPLOAD_REPAIR} isAnimationActive={false} />
+                <Bar dataKey={mode === "size" ? "uploadNormalFailSize" : mode === "count" ? "uploadNormalFail" : mode === "sizePercent" ? "uploadNormalFailSizePct" : "uploadNormalFailPct"} stackId="ul" fill="#F97316" isAnimationActive={false} />
+                <Bar dataKey={mode === "size" ? "uploadRepairFailSize" : mode === "count" ? "uploadRepairFail" : mode === "sizePercent" ? "uploadRepairFailSizePct" : "uploadRepairFailPct"} stackId="ul" fill="#EF4444" isAnimationActive={false} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
         {/* Shared legend placed under the charts */}
         <Legend items={[
-          { label: 'Normal', color: '#10784A' },
-          { label: 'Repair', color: '#34D399' },
-          { label: 'Fail - Normal', color: '#EF4444' },
-          { label: 'Fail - Repair', color: '#F97316' },
+          { label: 'DL Normal', color: COLOR_DOWNLOAD },
+          { label: 'DL Repair', color: COLOR_DOWNLOAD_REPAIR },
+          { label: 'UL Normal', color: COLOR_UPLOAD },
+          { label: 'UL Repair', color: COLOR_UPLOAD_REPAIR },
+          { label: 'Fail - Normal', color: '#F97316' },
+          { label: 'Fail - Repair', color: '#EF4444' },
         ]} />
       </div>
     </section>

@@ -12,6 +12,7 @@ import {
 } from "recharts";
 
 import type { TransferActualData } from "../../types";
+import { COLOR_DOWNLOAD, COLOR_DOWNLOAD_REPAIR, COLOR_UPLOAD, COLOR_UPLOAD_REPAIR } from "../../constants/colors";
 import Legend from "../Legend";
 // PanelSubtitle will format timestamps according to user preference
 import PanelSubtitle from "../PanelSubtitle";
@@ -239,13 +240,13 @@ const SatelliteTrafficPanel: FC<SatelliteTrafficPanelProps> = ({
                 <Bar
                   dataKey="downloadNormal"
                   stackId="download"
-                  fill="rgba(56, 189, 248, 0.85)"
+                  fill={COLOR_DOWNLOAD}
                   isAnimationActive={false}
                 />
                 <Bar
                   dataKey="downloadRepair"
                   stackId="download"
-                  fill="rgba(248, 113, 113, 0.85)"
+                  fill={COLOR_DOWNLOAD_REPAIR}
                   isAnimationActive={false}
                 >
                   <LabelList position="top" content={renderDownloadLabel} />
@@ -253,13 +254,13 @@ const SatelliteTrafficPanel: FC<SatelliteTrafficPanelProps> = ({
                 <Bar
                   dataKey="uploadNormal"
                   stackId="upload"
-                  fill="rgba(52, 211, 153, 0.85)"
+                  fill={COLOR_UPLOAD}
                   isAnimationActive={false}
                 />
                 <Bar
                   dataKey="uploadRepair"
                   stackId="upload"
-                  fill="rgba(249, 115, 22, 0.85)"
+                  fill={COLOR_UPLOAD_REPAIR}
                   isAnimationActive={false}
                 >
                   <LabelList position="top" content={renderUploadLabel} />
@@ -268,10 +269,10 @@ const SatelliteTrafficPanel: FC<SatelliteTrafficPanelProps> = ({
               </ResponsiveContainer>
             </div>
             <Legend items={[
-              { label: 'DL Normal', color: 'rgba(56, 189, 248, 0.85)' },
-              { label: 'DL Repair', color: 'rgba(248, 113, 113, 0.85)' },
-              { label: 'UL Normal', color: 'rgba(52, 211, 153, 0.85)' },
-              { label: 'UL Repair', color: 'rgba(249, 115, 22, 0.85)' },
+              { label: 'DL Normal', color: COLOR_DOWNLOAD },
+              { label: 'DL Repair', color: COLOR_DOWNLOAD_REPAIR },
+              { label: 'UL Normal', color: COLOR_UPLOAD },
+              { label: 'UL Repair', color: COLOR_UPLOAD_REPAIR },
             ]} />
           </>
         ) : null}
