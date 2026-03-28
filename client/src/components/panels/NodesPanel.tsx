@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { FaExclamationTriangle } from "react-icons/fa";
 
 import Settings from "../Settings";
+import NodeSelectionHelp from "../NodeSelectionHelp";
 
 import useNodes from "../../hooks/useNodes";
 import useSelectedNodesStore from "../../store/useSelectedNodes";
@@ -154,8 +155,8 @@ const NodesPanel: FC = () => {
     ...nodes.map((node) => ({ ...node, isAggregate: false })),
   ];
 
-  const handleSelection = (name: string) => {
-    toggleNode(name, availableNodeNames);
+  const handleSelection = (name: string, modifiers?: { shift?: boolean; ctrl?: boolean }) => {
+    toggleNode(name, availableNodeNames, modifiers);
   };
 
   const handleRefreshClick = () => {
@@ -249,6 +250,7 @@ const NodesPanel: FC = () => {
                 document.body,
               )
             : null}
+          <NodeSelectionHelp />
           <Settings />
           <button className="button" type="button" onClick={handleRefreshClick} disabled={isLoading}>
             {isLoading ? "Refreshing…" : "Refresh"}
@@ -280,7 +282,10 @@ const NodesPanel: FC = () => {
               .join(" ");
 
             const handleClick = (event: MouseEvent<HTMLElement>) => {
-              handleSelection(node.name);
+              handleSelection(node.name, {
+                shift: event.shiftKey,
+                ctrl: event.ctrlKey || event.metaKey,
+              });
               if (event.detail > 0) {
                 (event.currentTarget as HTMLElement).blur();
                 setSuppressedTooltipNode(node.name);
@@ -320,7 +325,10 @@ const NodesPanel: FC = () => {
                 onKeyDown={(event) => {
                   if (event.key === " " || event.key === "Enter") {
                     event.preventDefault();
-                    handleSelection(node.name);
+                    handleSelection(node.name, {
+                      shift: event.shiftKey,
+                      ctrl: event.ctrlKey || event.metaKey,
+                    });
                     setTooltipAnchor(null);
                     setActiveTooltipId(null);
                   }
