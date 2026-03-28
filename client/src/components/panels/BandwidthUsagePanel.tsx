@@ -592,6 +592,7 @@ const BandwidthUsagePanel: FC<BandwidthUsagePanelProps> = ({ selectedNodes }) =>
                     type="monotone"
                     dataKey="accUpload"
                     name="Acc. Upload"
+                    stackId={stackMode === "stack" ? "acc" : undefined}
                     stroke={COLOR_UPLOAD}
                     fill={COLOR_UPLOAD_FILL}
                     strokeWidth={2}
@@ -603,6 +604,7 @@ const BandwidthUsagePanel: FC<BandwidthUsagePanelProps> = ({ selectedNodes }) =>
                     type="monotone"
                     dataKey="accDownload"
                     name="Acc. Download"
+                    stackId={stackMode === "stack" ? "acc" : undefined}
                     stroke={COLOR_DOWNLOAD}
                     fill={COLOR_DOWNLOAD_FILL}
                     strokeWidth={2}
