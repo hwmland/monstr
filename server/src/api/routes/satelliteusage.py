@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, Query
@@ -7,7 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...database import get_session
 from ...repositories.satellite_usage import SatelliteUsageRepository
-from ...schemas import SatelliteUsageFilters, SatelliteUsageRead
+from ...schemas import (
+    SatelliteUsageFilters,
+    SatelliteUsageRead,
+    SatelliteUsageRequest,
+    SatelliteUsageResponse,
+)
 
 router = APIRouter(prefix="/api/satelliteusage", tags=["satelliteusage"])
 
@@ -25,3 +31,25 @@ async def list_satellite_usage(
     repository = SatelliteUsageRepository(session)
     records = await repository.list(filters)
     return [SatelliteUsageRead.model_validate(record) for record in records]
+
+
+@router.post("/usage", response_model=SatelliteUsageResponse)
+async def satellite_usage(
+    payload: SatelliteUsageRequest,
+    session: AsyncSession = Depends(get_session),
+) -> SatelliteUsageResponse:
+    """Return satellite usage records grouped by period for the requested nodes."""
+
+    start_period = (
+        datetime.now(timezone.utc).date() - timedelta(days=payload.number_of_periods)
+    ).isoformat()
+    sources = list(dict.fromkeys(payload.nodes)) if payload.nodes else None
+    repository = SatelliteUsageRepository(session)
+    records = await repository.list_from_period(start_period, sources)
+
+    periods: dict[str, list[SatelliteUsageRead]] = {}
+    for record in records:
+        bucket = periods.setdefault(record.period, [])
+        bucket.append(SatelliteUsageRead.model_validate(record))
+
+    return SatelliteUsageResponse(periods=periods)

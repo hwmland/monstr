@@ -204,6 +204,22 @@ def _process_something(self, payload: Dict[str, Any]):
 4. **Return appropriate tuple** — `(log_payload, transfer_payload, reputation_payload)` with `None` for unused
 5. **Add tests** — minimal test in `test_log_monitor.py` checking the event is not marked as unprocessed
 
+### Adding Period-Based Aggregation Endpoints
+
+Several tables use a `period` column (`yyyy-mm-dd` ISO date string) as a grouping key (e.g., `SatelliteUsage`, `DiskUsage`, `Paystub`). When adding POST endpoints that return data grouped by period:
+
+1. **Repository** — accept `start_period: str` for filtering (`WHERE period >= start_period`). Prefer simple string comparison over subqueries for distinct periods. See `SatelliteUsageRepository.list_from_period()`, `DiskUsageRepository.list_between_periods()`.
+2. **Route** — convert user-friendly parameters (like `numberOfPeriods: int`) to a `start_period` string: `(datetime.now(timezone.utc).date() - timedelta(days=N)).isoformat()`. Keep the conversion in the route, not the repository.
+3. **Grouping** — build `dict[str, list[SchemaRead]]` using `setdefault()`:
+   ```python
+   periods: dict[str, list[SomeRead]] = {}
+   for record in records:
+       bucket = periods.setdefault(record.period, [])
+       bucket.append(SomeRead.model_validate(record))
+   ```
+4. **Request schema** — follow the standard pattern: `nodes: list[str]` (empty = all) plus a time parameter with camelCase alias. Deduplicate nodes in the route via `list(dict.fromkeys(payload.nodes))`.
+5. **Period format** — `date.isoformat()` produces `yyyy-mm-dd`, matching the DB storage format. String comparisons (`>=`, `<=`) sort correctly.
+
 ## Testing Patterns
 
 - Each test gets an **isolated SQLite database** via the `isolated_database` fixture in `conftest.py`.
@@ -222,6 +238,7 @@ def _process_something(self, payload: Dict[str, Any]):
 - Performance/integration tests against the real database (`pokus.db`) should be decorated with `@pytest.mark.skipif` if the file is absent.
 - **Test file naming**: `test_<module_name>.py` mirrors source structure (`services/log_monitor.py` → `tests/test_log_monitor.py`)
 - **Run full suite after changes**: `python -m pytest -q server/tests` (from repo root)
+- **Date-relative test data**: When testing endpoints that compute time boundaries from "now" (e.g., `today - numberOfPeriods`), use `date.today() - timedelta(days=N)` for test record periods instead of hardcoded dates. Hardcoded historical dates will fall outside the query window and produce empty results.
 
 ### Parser Testing Best Practices
 

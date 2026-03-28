@@ -166,3 +166,21 @@ export interface IP24StatusEntry {
 }
 
 export type IP24StatusResponse = Record<string, IP24StatusEntry>;
+
+// Satellite bandwidth usage
+export interface SatelliteUsageRecord {
+  source: string;
+  satelliteId: string;
+  period: string;
+  dlUsage: number;
+  dlRepair: number;
+  dlAudit: number;
+  ulUsage: number;
+  ulRepair: number;
+  delete: number;
+  diskUsage?: number;
+}
+
+export interface SatelliteUsageResponse {
+  periods: Record<string, SatelliteUsageRecord[]>;
+}

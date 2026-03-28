@@ -101,6 +101,14 @@ const Settings: FC = () => {
                 <label className="settings__item">
                   <input
                     type="checkbox"
+                    checked={panels.bandwidthUsage ?? false}
+                    onChange={() => togglePanel("bandwidthUsage")}
+                  />
+                  <span>Bandwidth Usage</span>
+                </label>
+                <label className="settings__item">
+                  <input
+                    type="checkbox"
                     checked={panels.nodeCompare ?? true}
                     onChange={() => togglePanel("nodeCompare")}
                   />
