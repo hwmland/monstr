@@ -218,7 +218,7 @@ const NodesPanel: FC = () => {
                     <table className="nodes-ip24-tooltip__table">
                       <thead>
                         <tr>
-                          <th>IP</th>
+                          <th>Target</th>
                           <th>Expected</th>
                           <th>Instances</th>
                         </tr>
