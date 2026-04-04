@@ -67,7 +67,8 @@ def parse_args() -> argparse.Namespace:
         action="append",
         default=[],
         help=(
-            "Declare an IP and expected instances as IP:COUNT (e.g. 1.2.3.4:2 or host.example.com:4). "
+            "Declare an IP and expected instances as IP:COUNT or ALIAS|IP:COUNT "
+            "(e.g. 1.2.3.4:2 or Home|host.example.com:4). "
             "Repeatable."
         ),
     )

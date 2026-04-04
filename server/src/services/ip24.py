@@ -46,7 +46,7 @@ class IP24Service:
 
         async with self._lock:
             for target in self._targets:
-                self._states[target.ip] = IP24State(expected_instances=target.expected_instances)
+                self._states[target.alias] = IP24State(expected_instances=target.expected_instances)
 
         self._stop_event.clear()
         self._task = asyncio.create_task(self._run(), name="ip24-service")
@@ -88,10 +88,10 @@ class IP24Service:
     async def _maybe_poll_target(self, target: IP24Definition) -> None:
         now = datetime.now(timezone.utc)
         async with self._lock:
-            state = self._states.get(target.ip)
+            state = self._states.get(target.alias)
             if state is None:
                 state = IP24State(expected_instances=target.expected_instances)
-                self._states[target.ip] = state
+                self._states[target.alias] = state
 
             # Enforce intervals
             if state.last_success_at and now - state.last_success_at < timedelta(hours=24):
@@ -108,7 +108,7 @@ class IP24Service:
             return
         resolved_ip = await self._resolve_ipv4(target.ip)
         if not resolved_ip:
-            await self._record_failure(target.ip, "DNS resolution failed")
+            await self._record_failure(target.alias, "DNS resolution failed")
             logger.error("IP24 DNS resolution failed for %s", target.ip)
             return
 
@@ -125,7 +125,7 @@ class IP24Service:
                 raise ValueError("storjnet result count missing or invalid")
         except Exception as exc:  # noqa: BLE001
             logger.warning("IP24 poll failed for %s: %s", target.ip, exc, exc_info=True)
-            await self._record_failure(target.ip, str(exc))
+            await self._record_failure(target.alias, str(exc))
             return
 
         async with self._lock:
@@ -133,9 +133,9 @@ class IP24Service:
             state.last_success_at = datetime.now(timezone.utc)
             state.last_error = None
 
-    async def _record_failure(self, ip: str, error: str) -> None:
+    async def _record_failure(self, alias: str, error: str) -> None:
         async with self._lock:
-            state = self._states.get(ip)
+            state = self._states.get(alias)
             if state is None:
                 return
             state.last_error = error
@@ -154,8 +154,8 @@ class IP24Service:
     async def get_status(self) -> Dict[str, dict]:
         async with self._lock:
             snapshot = {}
-            for ip, state in self._states.items():
-                snapshot[ip] = {
+            for alias, state in self._states.items():
+                snapshot[alias] = {
                     "valid": state.last_error is None and state.last_instances is not None,
                     "expectedInstances": state.expected_instances,
                     "instances": state.last_instances,

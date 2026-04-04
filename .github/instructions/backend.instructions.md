@@ -237,7 +237,8 @@ Several tables use a `period` column (`yyyy-mm-dd` ISO date string) as a groupin
 - Test data is inserted via repositories within `async with database.SessionFactory() as session:`.
 - Performance/integration tests against the real database (`pokus.db`) should be decorated with `@pytest.mark.skipif` if the file is absent.
 - **Test file naming**: `test_<module_name>.py` mirrors source structure (`services/log_monitor.py` → `tests/test_log_monitor.py`)
-- **Run full suite after changes**: `python -m pytest -q server/tests` (from repo root)
+- **Run full suite after changes**: From the repo root on Windows, use `./server/.vent.monstr/Scripts/python.exe -m pytest -q server/tests`
+- **Virtual environment**: This repo uses `server/.vent.monstr`, not `.venv`; prefer the venv's Python executable over a global `python` when running tests
 - **Date-relative test data**: When testing endpoints that compute time boundaries from "now" (e.g., `today - numberOfPeriods`), use `date.today() - timedelta(days=N)` for test record periods instead of hardcoded dates. Hardcoded historical dates will fall outside the query window and produce empty results.
 
 ### Parser Testing Best Practices

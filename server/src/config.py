@@ -19,6 +19,7 @@ class SourceDefinition:
 
 @dataclass(frozen=True)
 class IP24Definition:
+    alias: str
     ip: str
     expected_instances: int
 
@@ -56,8 +57,8 @@ class Settings(BaseSettings):
     # `str | List[str]` prevents pydantic-settings from attempting JSON
     # decoding on simple comma-separated env strings.
     sources: str | List[str] = []
-    # Expected node instances per IP (string entries like "1.2.3.4:2" or
-    # "node.example.com:3"). Allow multiple or none; JSON list accepted via env.
+    # Expected node instances per IP. Entries may be "1.2.3.4:2" or
+    # "alias|node.example.com:3". Allow multiple or none; JSON list accepted via env.
     ip24: str | List[str] = []
     # Disqualification declarations.  Each entry is SOURCE:SATELLITE_ID:PERIOD
     # where SATELLITE_ID may be empty (meaning all satellites) and PERIOD is
@@ -250,20 +251,34 @@ class Settings(BaseSettings):
             entry = str(raw).strip()
             if not entry:
                 continue
-            if ":" not in entry:
-                raise ValueError(f"Invalid ip24 declaration '{entry}'; expected IP:INSTANCES")
-            ip_part, count_part = entry.split(":", 1)
+            alias = ""
+            base = entry
+            if "|" in entry:
+                alias, base = entry.split("|", 1)
+                alias = alias.strip()
+                base = base.strip()
+                if not alias:
+                    raise ValueError(f"Invalid ip24 declaration '{entry}'; alias cannot be empty")
+            if ":" not in base:
+                raise ValueError(
+                    f"Invalid ip24 declaration '{entry}'; expected [ALIAS|]IP:INSTANCES"
+                )
+            ip_part, count_part = base.split(":", 1)
             ip_part = ip_part.strip()
             count_part = count_part.strip()
             if not ip_part or not count_part:
-                raise ValueError(f"Invalid ip24 declaration '{entry}'; expected IP:INSTANCES")
+                raise ValueError(
+                    f"Invalid ip24 declaration '{entry}'; expected [ALIAS|]IP:INSTANCES"
+                )
             try:
                 expected = int(count_part)
             except ValueError as exc:  # noqa: PERF203
                 raise ValueError(f"Invalid ip24 instances value in '{entry}'") from exc
             if expected < 0:
                 raise ValueError(f"Invalid ip24 instances value in '{entry}'; must be non-negative")
-            parsed.append(IP24Definition(ip=ip_part, expected_instances=expected))
+            parsed.append(
+                IP24Definition(alias=alias or ip_part, ip=ip_part, expected_instances=expected)
+            )
         return parsed
 
     @property
