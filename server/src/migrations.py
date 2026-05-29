@@ -384,6 +384,13 @@ def _migrate_9_to_10(conn: Connection) -> None:
     logger.info("Completed migration 8 -> 9")
 
 
+def _migrate_10_to_11(conn: Connection) -> None:
+    """Create HashstoreCompaction table for compaction cycle tracking."""
+    logger.info("Starting migration 10 -> 11: create HashstoreCompaction table")
+    models.HashstoreCompaction.__table__.create(conn, checkfirst=True)
+    logger.info("Completed migration 10 -> 11")
+
+
 MigrationFunc = type(_migrate_0_to_1)
 
 MIGRATIONS = (
@@ -397,6 +404,7 @@ MIGRATIONS = (
     _migrate_7_to_8,
     _migrate_8_to_9,
     _migrate_9_to_10,
+    _migrate_10_to_11,
 )
 LATEST_SCHEMA_VERSION = len(MIGRATIONS)
 

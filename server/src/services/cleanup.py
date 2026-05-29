@@ -9,6 +9,7 @@ from typing import Optional
 
 from .. import database
 from ..config import Settings
+from ..repositories.hashstore_compaction import HashstoreCompactionRepository
 from ..repositories.log_entries import LogEntryRepository
 from ..repositories.transfers import TransferRepository
 from ..repositories.transfer_grouped import TransferGroupedRepository
@@ -46,10 +47,12 @@ class CleanupService:
             retention_logs = self._settings.get_retention_minutes("log_entries")
             retention_transfers = self._settings.get_retention_minutes("transfers")
             retention_grouped = self._settings.get_retention_minutes("transfer_grouped")
+            retention_compaction = self._settings.get_retention_minutes("hashstore_compaction")
 
             cutoff_logs = None if retention_logs == -1 else now - timedelta(minutes=retention_logs)
             cutoff_transfers = None if retention_transfers == -1 else now - timedelta(minutes=retention_transfers)
             cutoff_grouped = None if retention_grouped == -1 else now - timedelta(minutes=retention_grouped)
+            cutoff_compaction = None if retention_compaction == -1 else now - timedelta(minutes=retention_compaction)
             try:
                 async with database.SessionFactory() as session:
                     log_repository = LogEntryRepository(session)
@@ -100,6 +103,24 @@ class CleanupService:
                             "Deleted %d expired grouped transfer aggregates in %.2fms",
                             deleted_grouped,
                             t_grouped,
+                        )
+
+                    compaction_repository = HashstoreCompactionRepository(session)
+                    if cutoff_compaction is None:
+                        deleted_compaction = 0
+                        logger.debug("Skipping hashstore_compaction cleanup because retention is set to -1")
+                    else:
+                        t0 = time.time()
+                        try:
+                            deleted_compaction = await compaction_repository.delete_older_than(cutoff_compaction)
+                        except Exception:  # noqa: BLE001
+                            deleted_compaction = 0
+                            logger.exception("Failed deleting expired hashstore compaction records")
+                        t_compaction = (time.time() - t0) * 1000.0
+                        logger.info(
+                            "Deleted %d expired hashstore compaction records in %.2fms",
+                            deleted_compaction,
+                            t_compaction,
                         )
             except asyncio.CancelledError:
                 raise
