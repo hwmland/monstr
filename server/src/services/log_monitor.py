@@ -7,7 +7,7 @@ import json
 from server.src.core.logging import get_logger
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -18,6 +18,8 @@ import json
 import socket
 from ..config import Settings
 from .. import database
+from ..models import HashstoreCompaction
+from ..repositories.hashstore_compaction import HashstoreCompactionRepository
 from ..repositories.log_entries import LogEntryRepository
 from ..repositories.reputations import ReputationRepository
 from ..repositories.transfers import TransferRepository
@@ -45,6 +47,75 @@ _SNAKE_TO_TITLE = {
     "online_score_delta": "Online Score Delta",
     "suspension_score_delta": "Suspension Score Delta",
 }
+
+# --- Hashstore compaction utilities ---
+
+_SIZE_UNITS = {"B": 1, "KiB": 1024, "MiB": 1024**2, "GiB": 1024**3, "TiB": 1024**4,
+               "KB": 1000, "MB": 1000**2, "GB": 1000**3, "TB": 1000**4}
+_SIZE_RE = re.compile(r"^([0-9]+(?:\.[0-9]+)?)\s*([A-Za-z]+)$")
+_DUR_RE = re.compile(
+    r"(?:(\d+)h)?(?:(\d+)m)?(?:(\d+(?:\.\d+)?)s)?(?:(\d+(?:\.\d+)?)ms)?(?:(\d+(?:\.\d+)?)[µu]s)?"
+)
+
+
+def _parse_size(s: str) -> int:
+    """Parse a human-readable size string like '3.4 GiB' to bytes."""
+    if not s or s == "0 B":
+        return 0
+    m = _SIZE_RE.match(s.strip())
+    if not m:
+        return 0
+    value = float(m.group(1))
+    unit = m.group(2)
+    multiplier = _SIZE_UNITS.get(unit, 1)
+    return int(value * multiplier)
+
+
+def _parse_duration_ms(s: str) -> int:
+    """Parse a Go-style duration string to milliseconds."""
+    if not s:
+        return 0
+    total_ms = 0.0
+    m = _DUR_RE.fullmatch(s.strip())
+    if not m:
+        # Try plain seconds like "26.809596052s"
+        try:
+            if s.endswith("s") and "m" not in s and "h" not in s:
+                return int(float(s.rstrip("s")) * 1000)
+        except ValueError:
+            pass
+        return 0
+    if m.group(1):
+        total_ms += float(m.group(1)) * 3_600_000
+    if m.group(2):
+        total_ms += float(m.group(2)) * 60_000
+    if m.group(3):
+        total_ms += float(m.group(3)) * 1000
+    if m.group(4):
+        total_ms += float(m.group(4))
+    if m.group(5):
+        total_ms += float(m.group(5)) / 1000
+    return int(total_ms)
+
+
+@dataclass
+class _CompactionAccumulator:
+    """Accumulates data from a multi-line compaction cycle."""
+    source: str
+    satellite_id: str
+    store: str
+    passes: int = 0
+    # Aggregated deltas across passes
+    records_rewritten: int = 0
+    bytes_rewritten: int = 0
+    records_trashed: int = 0
+    bytes_trashed: int = 0
+    records_expired: int = 0
+    bytes_expired: int = 0
+    records_restored: int = 0
+    bytes_restored: int = 0
+    logs_reclaimed: int = 0
+    bytes_reclaimed: int = 0
 
 
 @dataclass(frozen=True)
@@ -102,6 +173,8 @@ class LogMonitorService:
         self._stopping = asyncio.Event()
         self._unprocessed_dir = settings.unprocessed_log_directory
         self._unprocessed_prefix = "unprocessed"
+        # Hashstore compaction accumulators keyed by (source, satellite_id, store)
+        self._compaction_accumulators: Dict[Tuple[str, str, str], _CompactionAccumulator] = {}
 
     async def start(self) -> None:
         try:
@@ -391,6 +464,11 @@ class LogMonitorService:
         *,
         source_hint: str | None = None,
     ) -> None:
+        # Fast-path: intercept hashstore compaction lines before normal processing
+        if "\thashstore\t" in line:
+            self._handle_hashstore_compaction_line(node_name, line)
+            return
+
         (
             processed_entries,
             transfer_entries,
@@ -513,6 +591,132 @@ class LogMonitorService:
                 transfer_count,
                 reputation_count,
             )
+
+    # --- Hashstore compaction accumulator ---
+
+    def _handle_hashstore_compaction_line(self, node_name: str, raw_line: str) -> None:
+        """Parse a hashstore log line and feed the compaction accumulator."""
+        trimmed = raw_line.rstrip("\n")
+        parts = trimmed.split("\t", 4)
+        if len(parts) != 5:
+            return
+
+        timestamp_str, level, area, action, details_blob = parts
+        if level != "INFO" or area != "hashstore":
+            return
+
+        try:
+            details = json.loads(details_blob)
+        except (json.JSONDecodeError, ValueError):
+            return
+
+        if not isinstance(details, dict):
+            return
+
+        satellite_id = details.get("satellite", "")
+        store = details.get("store", "")
+        if not satellite_id or not store:
+            return
+
+        key = (node_name, satellite_id, store)
+
+        if action == "beginning compaction":
+            # Start a new accumulator (discard any stale incomplete one)
+            self._compaction_accumulators[key] = _CompactionAccumulator(
+                source=node_name, satellite_id=satellite_id, store=store
+            )
+
+        elif action == "compact once started":
+            acc = self._compaction_accumulators.get(key)
+            if acc is not None:
+                acc.passes += 1
+
+        elif action == "hashtbl rewritten":
+            acc = self._compaction_accumulators.get(key)
+            if acc is not None:
+                acc.records_rewritten += int(details.get("rewritten_records", 0))
+                acc.bytes_rewritten += _parse_size(str(details.get("rewritten_bytes", "0 B")))
+                acc.records_trashed += int(details.get("trashed_records", 0))
+                acc.bytes_trashed += _parse_size(str(details.get("trashed_bytes", "0 B")))
+                acc.records_expired += int(details.get("expired_records", 0))
+                acc.bytes_expired += _parse_size(str(details.get("expired_bytes", "0 B")))
+                acc.records_restored += int(details.get("restored_records", 0))
+                acc.bytes_restored += _parse_size(str(details.get("restored_bytes", "0 B")))
+                acc.logs_reclaimed += int(details.get("reclaimed_logs", 0))
+                acc.bytes_reclaimed += _parse_size(str(details.get("reclaimed_bytes", "0 B")))
+
+        elif action == "finished compaction":
+            acc = self._compaction_accumulators.pop(key, None)
+            if acc is None:
+                return
+
+            try:
+                ts = datetime.strptime(timestamp_str, "%Y-%m-%dT%H:%M:%SZ").replace(
+                    tzinfo=timezone.utc
+                )
+            except ValueError:
+                return
+
+            stats = details.get("stats", {})
+            table = stats.get("Table", {})
+            duration_str = details.get("duration", "")
+
+            record = HashstoreCompaction(
+                source=node_name,
+                satellite_id=satellite_id,
+                store=store,
+                timestamp=ts,
+                duration_ms=_parse_duration_ms(duration_str),
+                passes=max(acc.passes, 1),
+                num_logs=int(stats.get("NumLogs", 0)),
+                len_logs=_parse_size(str(stats.get("LenLogs", "0 B"))),
+                set_percent=float(stats.get("SetPercent", 0)),
+                trash_percent=float(stats.get("TrashPercent", 0)),
+                ttl_percent=float(stats.get("TTLPercent", 0)),
+                data_reclaimable=_parse_size(str(stats.get("DataReclaimable", "0 B"))),
+                free_required=_parse_size(str(stats.get("FreeRequired", "0 B"))),
+                compactions_total=int(stats.get("Compactions", 0)),
+                num_set=int(table.get("NumSet", 0)),
+                len_set=_parse_size(str(table.get("LenSet", "0 B"))),
+                avg_set=float(table.get("AvgSet", 0)),
+                num_trash=int(table.get("NumTrash", 0)),
+                len_trash=_parse_size(str(table.get("LenTrash", "0 B"))),
+                num_ttl=int(table.get("NumTTL", 0)),
+                len_ttl=_parse_size(str(table.get("LenTTL", "0 B"))),
+                table_load=float(table.get("Load", 0)),
+                table_size=_parse_size(str(table.get("TableSize", "0 B"))),
+                num_slots=int(table.get("NumSlots", 0)),
+                records_rewritten=acc.records_rewritten,
+                bytes_rewritten=acc.bytes_rewritten,
+                records_trashed=acc.records_trashed,
+                bytes_trashed=acc.bytes_trashed,
+                records_expired=acc.records_expired,
+                bytes_expired=acc.bytes_expired,
+                records_restored=acc.records_restored,
+                bytes_restored=acc.bytes_restored,
+                logs_reclaimed=acc.logs_reclaimed,
+                bytes_reclaimed=acc.bytes_reclaimed,
+            )
+            asyncio.ensure_future(self._flush_compaction(record))
+
+    async def _flush_compaction(self, record: HashstoreCompaction) -> None:
+        """Persist a single completed compaction record to the database."""
+        try:
+            async with database.SessionFactory() as session:
+                repo = HashstoreCompactionRepository(session)
+                await repo.create(record)
+                await session.commit()
+            logger.info(
+                "Persisted compaction record: node=%s satellite=%s store=%s duration=%dms",
+                record.source,
+                record.satellite_id[:12],
+                record.store,
+                record.duration_ms,
+            )
+        except OperationalError as exc:
+            logger.warning("Failed to persist compaction record: %s", exc)
+        except Exception:
+            logger.exception("Unexpected error persisting compaction record")
 
     async def _process_line(
         self, node_name: str, raw_line: str

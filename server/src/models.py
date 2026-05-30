@@ -337,3 +337,81 @@ class AccessLog(SQLModel, table=True):
         sa_column=Column(String(1024), nullable=True),
         description="User-Agent header",
     )
+
+
+class HashstoreCompaction(SQLModel, table=True):
+    """One row per hashstore compaction cycle (satellite x store)."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    source: str = Field(
+        sa_column=Column(String(32), nullable=False, index=True),
+        description="Configured node name for the log source",
+    )
+    satellite_id: str = Field(
+        sa_column=Column(String(64), nullable=False),
+        description="Satellite identifier",
+    )
+    store: str = Field(
+        sa_column=Column(String(8), nullable=False),
+        description="Store identifier (e.g. s0, s1)",
+    )
+    timestamp: datetime = Field(
+        sa_column=Column(DateTime(timezone=True), nullable=False, index=True),
+        description="Timestamp of the finished compaction event",
+    )
+    duration_ms: int = Field(
+        description="Total compaction cycle duration in milliseconds",
+    )
+    passes: int = Field(
+        default=1,
+        description="Number of compaction passes in this cycle",
+    )
+
+    # Snapshot fields (from finished compaction stats)
+    num_logs: int = Field(description="Number of log files after compaction")
+    len_logs: int = Field(description="Total log size in bytes after compaction")
+    set_percent: float = Field(
+        sa_column=Column(Float, nullable=False),
+        description="Fraction of data that is live",
+    )
+    trash_percent: float = Field(
+        sa_column=Column(Float, nullable=False),
+        description="Fraction of data that is trash",
+    )
+    ttl_percent: float = Field(
+        sa_column=Column(Float, nullable=False),
+        description="Fraction of data with TTL",
+    )
+    data_reclaimable: int = Field(description="Reclaimable bytes after compaction")
+    free_required: int = Field(description="Free space required for next compaction in bytes")
+    compactions_total: int = Field(description="Lifetime compaction count for this store")
+
+    # Table stats
+    num_set: int = Field(description="Number of live records")
+    len_set: int = Field(description="Total live data in bytes")
+    avg_set: float = Field(
+        sa_column=Column(Float, nullable=False),
+        description="Average live piece size in bytes",
+    )
+    num_trash: int = Field(description="Number of trashed records")
+    len_trash: int = Field(description="Total trash data in bytes")
+    num_ttl: int = Field(description="Number of TTL records")
+    len_ttl: int = Field(description="Total TTL data in bytes")
+    table_load: float = Field(
+        sa_column=Column(Float, nullable=False),
+        description="Hash table load factor (0-1)",
+    )
+    table_size: int = Field(description="Hash table size in bytes")
+    num_slots: int = Field(description="Hash table slot count")
+
+    # Aggregated per-cycle deltas (sum across passes)
+    records_rewritten: int = Field(default=0, description="Records physically moved")
+    bytes_rewritten: int = Field(default=0, description="Bytes physically moved")
+    records_trashed: int = Field(default=0, description="Records moved to trash")
+    bytes_trashed: int = Field(default=0, description="Bytes moved to trash")
+    records_expired: int = Field(default=0, description="TTL-expired records removed")
+    bytes_expired: int = Field(default=0, description="TTL-expired bytes removed")
+    records_restored: int = Field(default=0, description="Records restored from trash")
+    bytes_restored: int = Field(default=0, description="Bytes restored from trash")
+    logs_reclaimed: int = Field(default=0, description="Log files freed")
+    bytes_reclaimed: int = Field(default=0, description="Bytes freed on disk")

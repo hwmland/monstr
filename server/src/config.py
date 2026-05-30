@@ -92,6 +92,7 @@ class Settings(BaseSettings):
     retention_transfers_minutes: int = 1440  # 1 day in minutes
     retention_log_entries_minutes: int = 1440 * 7 * 4  # 4 weeks in minutes
     retention_transfer_grouped_minutes: int = -1 # unlimited retention
+    retention_hashstore_compaction_minutes: int = 1440 * 365 * 5  # 5 years in minutes
     frontend_dist_dir: Optional[str] = "../client/dist"
     unprocessed_log_dir: str = "../data/"
     cors_allow_origins: List[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
@@ -187,6 +188,7 @@ class Settings(BaseSettings):
             "transfers": "retention_transfers_minutes",
             "log_entries": "retention_log_entries_minutes",
             "transfer_grouped": "retention_transfer_grouped_minutes",
+            "hashstore_compaction": "retention_hashstore_compaction_minutes",
         }
 
         attr = key_map.get(table_name)

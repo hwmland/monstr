@@ -664,6 +664,69 @@ class SatelliteUsageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
+# Hashstore compaction schemas
+class HashstoreCompactionFilters(BaseModel):
+    source: Optional[str] = Field(default=None, description="Filter by node/source name")
+    satellite_id: Optional[str] = Field(
+        default=None,
+        description="Filter by satellite identifier",
+        serialization_alias="satelliteId",
+        validation_alias="satelliteId",
+    )
+    store: Optional[str] = Field(default=None, description="Filter by store (s0, s1, ...)")
+    since: Optional[datetime] = Field(default=None, description="Records after this timestamp")
+    until: Optional[datetime] = Field(default=None, description="Records before this timestamp")
+    limit: int = Field(default=100, ge=1, le=1000)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class HashstoreCompactionRead(BaseModel):
+    id: int
+    source: str
+    satellite_id: str = Field(serialization_alias="satelliteId")
+    store: str
+    timestamp: datetime
+    duration_ms: int = Field(serialization_alias="durationMs")
+    passes: int
+
+    # Snapshot
+    num_logs: int = Field(serialization_alias="numLogs")
+    len_logs: int = Field(serialization_alias="lenLogs")
+    set_percent: float = Field(serialization_alias="setPercent")
+    trash_percent: float = Field(serialization_alias="trashPercent")
+    ttl_percent: float = Field(serialization_alias="ttlPercent")
+    data_reclaimable: int = Field(serialization_alias="dataReclaimable")
+    free_required: int = Field(serialization_alias="freeRequired")
+    compactions_total: int = Field(serialization_alias="compactionsTotal")
+
+    # Table stats
+    num_set: int = Field(serialization_alias="numSet")
+    len_set: int = Field(serialization_alias="lenSet")
+    avg_set: float = Field(serialization_alias="avgSet")
+    num_trash: int = Field(serialization_alias="numTrash")
+    len_trash: int = Field(serialization_alias="lenTrash")
+    num_ttl: int = Field(serialization_alias="numTtl")
+    len_ttl: int = Field(serialization_alias="lenTtl")
+    table_load: float = Field(serialization_alias="tableLoad")
+    table_size: int = Field(serialization_alias="tableSize")
+    num_slots: int = Field(serialization_alias="numSlots")
+
+    # Deltas
+    records_rewritten: int = Field(serialization_alias="recordsRewritten")
+    bytes_rewritten: int = Field(serialization_alias="bytesRewritten")
+    records_trashed: int = Field(serialization_alias="recordsTrashed")
+    bytes_trashed: int = Field(serialization_alias="bytesTrashed")
+    records_expired: int = Field(serialization_alias="recordsExpired")
+    bytes_expired: int = Field(serialization_alias="bytesExpired")
+    records_restored: int = Field(serialization_alias="recordsRestored")
+    bytes_restored: int = Field(serialization_alias="bytesRestored")
+    logs_reclaimed: int = Field(serialization_alias="logsReclaimed")
+    bytes_reclaimed: int = Field(serialization_alias="bytesReclaimed")
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
 # Dash / node-api passthrough schemas (mirrors dashstorj shared ApiTypes)
 class DashStorjSatellite(BaseModel):
     id: str

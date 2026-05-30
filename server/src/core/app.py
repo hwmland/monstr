@@ -30,6 +30,7 @@ from ..api.routes import (
     access_logs,
     ip24,
     dash,
+    hashstore,
 )
 from ..config import Settings
 from ..database import configure_database, init_database
@@ -168,6 +169,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(access_logs.router)
     app.include_router(ip24.router)
     app.include_router(dash.router)
+    app.include_router(hashstore.router)
 
     frontend_path = settings.frontend_path
     if frontend_path and frontend_path.exists():

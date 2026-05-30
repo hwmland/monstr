@@ -15,6 +15,7 @@ from . import (
 	access_logs,
 	ip24,
 	dash,
+	hashstore,
 )
 
 
@@ -35,4 +36,5 @@ __all__ = [
 	"access_logs",
 	"ip24",
 	"dash",
+	"hashstore",
 ]
