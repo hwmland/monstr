@@ -269,3 +269,183 @@ async def test_migration_creates_table() -> None:
             text("SELECT name FROM sqlite_master WHERE type='table' AND name='hashstorecompaction'")
         )
         assert result.scalar() is not None
+
+
+# --- Series aggregation endpoint tests ---
+
+
+@pytest.mark.asyncio
+async def test_series_default_30d() -> None:
+    app_settings = Settings(sources=[])
+    app = create_app(app_settings)
+    await database.init_database(app_settings)
+    transport = ASGITransport(app=app)
+
+    now = datetime.now(timezone.utc)
+    # Two compactions in the same day → folded into the same bucket.
+    rec1 = _make_compaction(timestamp=now.replace(hour=2, minute=0, second=0, microsecond=0))
+    rec2 = _make_compaction(timestamp=now.replace(hour=14, minute=0, second=0, microsecond=0))
+    rec2.passes = 1
+    rec2.duration_ms = 1000
+    rec2.bytes_reclaimed = 500
+    # Make rec2 a later snapshot so we can verify "latest wins".
+    rec2.num_set = 999_999
+
+    async with database.SessionFactory() as session:
+        session.add(rec1)
+        session.add(rec2)
+        await session.commit()
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/hashstore-compaction/series",
+            json={"nodes": [], "timeRange": "30d"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["bucketSeconds"] == 86400
+    assert len(body["buckets"]) == 30
+
+    # The last bucket is "today" — both records land here.
+    last_bucket = body["buckets"][-1]
+    assert last_bucket["eventCount"] == 2
+    # Deltas summed
+    assert last_bucket["passes"] == rec1.passes + 1
+    assert last_bucket["durationMs"] == rec1.duration_ms + 1000
+    assert last_bucket["bytesReclaimed"] == rec1.bytes_reclaimed + 500
+    # Snapshot fields summed across all events in bucket
+    assert last_bucket["numSet"] == rec1.num_set + 999_999
+
+    # Other buckets should be empty
+    assert body["buckets"][0]["eventCount"] == 0
+    assert body["buckets"][0]["passes"] == 0
+
+
+@pytest.mark.asyncio
+async def test_series_filters_by_store() -> None:
+    app_settings = Settings(sources=[])
+    app = create_app(app_settings)
+    await database.init_database(app_settings)
+    transport = ASGITransport(app=app)
+
+    now = datetime.now(timezone.utc).replace(hour=10, minute=0, second=0, microsecond=0)
+    async with database.SessionFactory() as session:
+        session.add(_make_compaction(store="s0", timestamp=now))
+        session.add(_make_compaction(store="s1", timestamp=now))
+        await session.commit()
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/hashstore-compaction/series",
+            json={"store": "s1", "timeRange": "30d"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    # Only s1 event counted
+    last_bucket = body["buckets"][-1]
+    assert last_bucket["eventCount"] == 1
+
+
+@pytest.mark.asyncio
+async def test_series_90d_uses_3d_buckets() -> None:
+    app_settings = Settings(sources=[])
+    app = create_app(app_settings)
+    await database.init_database(app_settings)
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/hashstore-compaction/series",
+            json={"timeRange": "90d"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["bucketSeconds"] == 3 * 86400
+
+
+@pytest.mark.asyncio
+async def test_series_filters_by_node_and_satellite() -> None:
+    app_settings = Settings(sources=[])
+    app = create_app(app_settings)
+    await database.init_database(app_settings)
+    transport = ASGITransport(app=app)
+
+    now = datetime.now(timezone.utc).replace(hour=10, minute=0, second=0, microsecond=0)
+    sat_a = "12L9ZFwhzVpuEKMUNUqkaTLGzwY9G24tbiigLiXpmZWKwmcNDDs"
+    sat_b = "121RTSDpyNZVcEU84Ticf2L1ntiuUimbWgfATz21tuvgk3vzoA6"
+    async with database.SessionFactory() as session:
+        session.add(_make_compaction(source="Node1", satellite_id=sat_a, timestamp=now))
+        session.add(_make_compaction(source="Node1", satellite_id=sat_b, timestamp=now))
+        session.add(_make_compaction(source="Node2", satellite_id=sat_a, timestamp=now))
+        await session.commit()
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/hashstore-compaction/series",
+            json={"nodes": ["Node1"], "satelliteId": sat_a, "timeRange": "30d"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    # Only Node1 × sat_a event counted (1 of 3 inserted)
+    last_bucket = body["buckets"][-1]
+    assert last_bucket["eventCount"] == 1
+
+
+@pytest.mark.asyncio
+async def test_series_multi_day_aggregated() -> None:
+    """Events on different days/satellites/stores all aggregate into one bucket list."""
+    app_settings = Settings(sources=[])
+    app = create_app(app_settings)
+    await database.init_database(app_settings)
+    transport = ASGITransport(app=app)
+
+    from datetime import timedelta
+
+    now = datetime.now(timezone.utc)
+    today = now.replace(hour=8, minute=0, second=0, microsecond=0)
+    yesterday = today - timedelta(days=1)
+
+    sat_a = "12L9ZFwhzVpuEKMUNUqkaTLGzwY9G24tbiigLiXpmZWKwmcNDDs"
+    sat_b = "121RTSDpyNZVcEU84Ticf2L1ntiuUimbWgfATz21tuvgk3vzoA6"
+
+    rec1 = _make_compaction(source="Node5", satellite_id=sat_a, store="s0", timestamp=yesterday)
+    rec1.passes = 3
+    rec1.duration_ms = 10000
+    rec2 = _make_compaction(source="Node5", satellite_id=sat_b, store="s1", timestamp=today)
+    rec2.passes = 5
+    rec2.duration_ms = 20000
+
+    async with database.SessionFactory() as session:
+        session.add(rec1)
+        session.add(rec2)
+        await session.commit()
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/hashstore-compaction/series",
+            json={"nodes": ["Node5"], "timeRange": "30d"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["buckets"]) == 30
+
+    # Find buckets with data
+    non_empty = [(i, b) for i, b in enumerate(body["buckets"]) if b["eventCount"] > 0]
+    assert len(non_empty) == 2, f"Expected 2 non-empty buckets, got {len(non_empty)}"
+
+    # Yesterday's bucket
+    yesterday_bucket = non_empty[0][1]
+    assert yesterday_bucket["eventCount"] == 1
+    assert yesterday_bucket["passes"] == 3
+    assert yesterday_bucket["durationMs"] == 10000
+
+    # Today's bucket
+    today_bucket = non_empty[1][1]
+    assert today_bucket["eventCount"] == 1
+    assert today_bucket["passes"] == 5
+    assert today_bucket["durationMs"] == 20000

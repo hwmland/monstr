@@ -59,3 +59,30 @@ class HashstoreCompactionRepository:
         )
         result = await self.session.execute(stmt)
         return result.rowcount or 0
+
+    async def list_range(
+        self,
+        since: datetime,
+        until: datetime,
+        sources: Optional[Sequence[str]] = None,
+        satellite_id: Optional[str] = None,
+        store: Optional[str] = None,
+    ) -> List[HashstoreCompaction]:
+        """List all compaction events within [since, until), ordered by timestamp asc.
+
+        Used by the panel-series endpoint; no LIMIT applied so the caller can
+        bucket the full window in memory.
+        """
+        stmt = select(HashstoreCompaction).where(
+            HashstoreCompaction.timestamp >= since,
+            HashstoreCompaction.timestamp < until,
+        )
+        if sources:
+            stmt = stmt.where(HashstoreCompaction.source.in_(list(sources)))
+        if satellite_id:
+            stmt = stmt.where(HashstoreCompaction.satellite_id == satellite_id)
+        if store:
+            stmt = stmt.where(HashstoreCompaction.store == store)
+        stmt = stmt.order_by(HashstoreCompaction.timestamp.asc())
+        result = await self.session.execute(stmt)
+        return [row[0] for row in result.fetchall()]

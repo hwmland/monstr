@@ -6,7 +6,7 @@ import { use24hTime } from '../utils/time';
 import usePanelVisibilityStore from "../store/usePanelVisibility";
 
 const Settings: FC = () => {
-  const { panels, togglePanel } = usePanelVisibilityStore();
+  const { panels, togglePanel, hashstoreGroupEnabled, toggleHashstoreGroup } = usePanelVisibilityStore();
   const [open, setOpen] = useState(false);
   const pickerRef = useRef<HTMLDivElement | null>(null);
   const [prefer24h, setPrefer24h] = useState<boolean | null>(() => {
@@ -81,6 +81,63 @@ const Settings: FC = () => {
                 <div style={{ height: 2, background: 'rgba(148,163,184,0.4)', margin: '8px 0 10px 0', borderRadius: 2 }} />
 
                 <div style={{ fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 600, marginBottom: 6 }}>Panels</div>
+
+                <label className="settings__item" style={{ marginBottom: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={hashstoreGroupEnabled}
+                    onChange={() => toggleHashstoreGroup()}
+                  />
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-muted)' }}>Hashstore</span>
+                </label>
+
+                <label className="settings__item" style={{ marginLeft: 16 }}>
+                  <input
+                    type="checkbox"
+                    checked={panels.hashstoreStorage ?? true}
+                    onChange={() => togglePanel("hashstoreStorage")}
+                    disabled={!hashstoreGroupEnabled}
+                  />
+                  <span>Storage Composition</span>
+                </label>
+                <label className="settings__item" style={{ marginLeft: 16 }}>
+                  <input
+                    type="checkbox"
+                    checked={panels.hashstoreCompaction ?? true}
+                    onChange={() => togglePanel("hashstoreCompaction")}
+                    disabled={!hashstoreGroupEnabled}
+                  />
+                  <span>Compaction Efficiency</span>
+                </label>
+                <label className="settings__item" style={{ marginLeft: 16 }}>
+                  <input
+                    type="checkbox"
+                    checked={panels.hashstoreHealth ?? true}
+                    onChange={() => togglePanel("hashstoreHealth")}
+                    disabled={!hashstoreGroupEnabled}
+                  />
+                  <span>Hashstore Health</span>
+                </label>
+                <label className="settings__item" style={{ marginLeft: 16 }}>
+                  <input
+                    type="checkbox"
+                    checked={panels.hashstoreActivity ?? false}
+                    onChange={() => togglePanel("hashstoreActivity")}
+                    disabled={!hashstoreGroupEnabled}
+                  />
+                  <span>Bytes Activity</span>
+                </label>
+                <label className="settings__item" style={{ marginLeft: 16 }}>
+                  <input
+                    type="checkbox"
+                    checked={panels.hashstoreDiagnostics ?? false}
+                    onChange={() => togglePanel("hashstoreDiagnostics")}
+                    disabled={!hashstoreGroupEnabled}
+                  />
+                  <span>Diagnostics</span>
+                </label>
+
+                <div style={{ height: 2, background: 'rgba(148,163,184,0.4)', margin: '8px 0 10px 0', borderRadius: 2 }} />
 
                 <label className="settings__item">
                   <input
@@ -162,6 +219,8 @@ const Settings: FC = () => {
                   />
                   <span>Reputations</span>
                 </label>
+
+
               </div>
             </div>,
             document.body,

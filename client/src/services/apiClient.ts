@@ -20,6 +20,9 @@ import type {
   IP24StatusResponse,
   SatelliteUsageRecord,
   SatelliteUsageResponse,
+  HashstoreTimeRange,
+  HashstoreCompactionBucket,
+  HashstoreSeriesResponse,
 } from "../types";
 
 const DEFAULT_API_BASE_URL = import.meta.env.DEV ? "http://localhost:8000/api" : "/api";
@@ -475,4 +478,70 @@ export const fetchSatelliteUsage = async (
   }
 
   return { periods };
+};
+
+export const fetchHashstoreSeries = async (
+  nodes: string[],
+  timeRange: HashstoreTimeRange,
+  satelliteId?: string | null,
+  store?: string | null,
+): Promise<HashstoreSeriesResponse> => {
+  const body: Record<string, unknown> = { nodes, timeRange };
+  if (satelliteId) body.satelliteId = satelliteId;
+  if (store) body.store = store;
+
+  const response = await apiClient.post("/hashstore-compaction/series", body);
+  const raw = response.data;
+
+  if (!raw || typeof raw !== "object") {
+    throw new Error("Unexpected hashstore series response format");
+  }
+
+  const record = raw as Record<string, unknown>;
+  const startTime = String(record.startTime ?? record.start_time ?? "");
+  const endTime = String(record.endTime ?? record.end_time ?? "");
+  const bucketSeconds = toNumeric(record.bucketSeconds ?? record.bucket_seconds);
+
+  const rawBuckets = Array.isArray(record.buckets) ? record.buckets : [];
+  const buckets: HashstoreCompactionBucket[] = rawBuckets.map((b: unknown) => {
+    const r = (b ?? {}) as Record<string, unknown>;
+    return {
+      bucketStart: String(r.bucketStart ?? r.bucket_start ?? ""),
+      numLogs: toNumeric(r.numLogs ?? r.num_logs),
+      lenLogs: toNumeric(r.lenLogs ?? r.len_logs),
+      setPercent: toNumeric(r.setPercent ?? r.set_percent),
+      trashPercent: toNumeric(r.trashPercent ?? r.trash_percent),
+      ttlPercent: toNumeric(r.ttlPercent ?? r.ttl_percent),
+      dataReclaimable: toNumeric(r.dataReclaimable ?? r.data_reclaimable),
+      freeRequired: toNumeric(r.freeRequired ?? r.free_required),
+      compactionsTotal: toNumeric(r.compactionsTotal ?? r.compactions_total),
+      numSet: toNumeric(r.numSet ?? r.num_set),
+      lenSet: toNumeric(r.lenSet ?? r.len_set),
+      avgSet: toNumeric(r.avgSet ?? r.avg_set),
+      numTrash: toNumeric(r.numTrash ?? r.num_trash),
+      lenTrash: toNumeric(r.lenTrash ?? r.len_trash),
+      numTtl: toNumeric(r.numTtl ?? r.num_ttl),
+      lenTtl: toNumeric(r.lenTtl ?? r.len_ttl),
+      tableLoad: toNumeric(r.tableLoad ?? r.table_load),
+      tableSize: toNumeric(r.tableSize ?? r.table_size),
+      numSlots: toNumeric(r.numSlots ?? r.num_slots),
+      passes: toNumeric(r.passes),
+      durationMs: toNumeric(r.durationMs ?? r.duration_ms),
+      durationMaxMs: toNumeric(r.durationMaxMs ?? r.duration_max_ms),
+      durationMedianMs: toNumeric(r.durationMedianMs ?? r.duration_median_ms),
+      recordsRewritten: toNumeric(r.recordsRewritten ?? r.records_rewritten),
+      bytesRewritten: toNumeric(r.bytesRewritten ?? r.bytes_rewritten),
+      recordsTrashed: toNumeric(r.recordsTrashed ?? r.records_trashed),
+      bytesTrashed: toNumeric(r.bytesTrashed ?? r.bytes_trashed),
+      recordsExpired: toNumeric(r.recordsExpired ?? r.records_expired),
+      bytesExpired: toNumeric(r.bytesExpired ?? r.bytes_expired),
+      recordsRestored: toNumeric(r.recordsRestored ?? r.records_restored),
+      bytesRestored: toNumeric(r.bytesRestored ?? r.bytes_restored),
+      logsReclaimed: toNumeric(r.logsReclaimed ?? r.logs_reclaimed),
+      bytesReclaimed: toNumeric(r.bytesReclaimed ?? r.bytes_reclaimed),
+      eventCount: toNumeric(r.eventCount ?? r.event_count),
+    };
+  });
+
+  return { startTime, endTime, bucketSeconds, buckets };
 };
