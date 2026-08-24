@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from server.src.core.logging import get_logger
 from contextlib import asynccontextmanager
@@ -84,11 +85,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
-            await log_monitor.stop()
-            await nodeapi_service.stop()
-            await cleanup_service.stop()
-            await transfer_grouping.stop()
-            await ip24_service.stop()
+            await asyncio.gather(
+                log_monitor.stop(),
+                nodeapi_service.stop(),
+                cleanup_service.stop(),
+                transfer_grouping.stop(),
+                ip24_service.stop(),
+                return_exceptions=True,
+            )
 
     app = FastAPI(
         title="Monstr Log Monitor",

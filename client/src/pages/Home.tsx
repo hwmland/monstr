@@ -9,6 +9,7 @@ import HourlyTrafficPanel from "../components/panels/HourlyTrafficPanel";
 import AccumulatedTrafficPanel from "../components/panels/AccumulatedTrafficPanel";
 import DiskUsagePanel from "../components/panels/DiskUsagePanel";
 import BandwidthUsagePanel from "../components/panels/BandwidthUsagePanel";
+import HashstorePanel from "../components/panels/hashstore/HashstorePanel";
 import useTransfersActual from "../hooks/useActualPerformancePanel";
 import usePanelVisibilityStore from "../store/usePanelVisibility";
 
@@ -33,6 +34,9 @@ const HomePage = () => {
   return (
     <div className="page">
       <NodesPanel />
+
+      <HashstorePanel />
+
       {showLongTerm ? <LongTermPanel /> : null}
       {showDiskUsage ? <DiskUsagePanel selectedNodes={selectedNodes} /> : null}
       {showBandwidthUsage ? <BandwidthUsagePanel selectedNodes={selectedNodes} /> : null}

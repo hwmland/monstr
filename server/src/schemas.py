@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -725,6 +725,89 @@ class HashstoreCompactionRead(BaseModel):
     bytes_reclaimed: int = Field(serialization_alias="bytesReclaimed")
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+# Hashstore compaction aggregated series (panel API)
+HashstoreTimeRange = Literal["30d", "90d", "1y", "5y"]
+
+
+class HashstoreCompactionSeriesRequest(BaseModel):
+    nodes: list[str] = Field(
+        default_factory=list,
+        description="Nodes to include; empty means all nodes.",
+    )
+    satellite_id: Optional[str] = Field(
+        default=None,
+        description="Satellite to filter by; null/omitted means all satellites.",
+        serialization_alias="satelliteId",
+        validation_alias="satelliteId",
+    )
+    store: Optional[str] = Field(
+        default=None,
+        description="Store filter: s0 or s1; null/omitted means all stores.",
+    )
+    time_range: HashstoreTimeRange = Field(
+        default="30d",
+        serialization_alias="timeRange",
+        validation_alias="timeRange",
+        description="Time range window.",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class HashstoreCompactionBucket(BaseModel):
+    bucket_start: datetime = Field(serialization_alias="bucketStart")
+
+    # Snapshot (latest within bucket)
+    num_logs: int = Field(default=0, serialization_alias="numLogs")
+    len_logs: int = Field(default=0, serialization_alias="lenLogs")
+    set_percent: float = Field(default=0.0, serialization_alias="setPercent")
+    trash_percent: float = Field(default=0.0, serialization_alias="trashPercent")
+    ttl_percent: float = Field(default=0.0, serialization_alias="ttlPercent")
+    data_reclaimable: int = Field(default=0, serialization_alias="dataReclaimable")
+    free_required: int = Field(default=0, serialization_alias="freeRequired")
+    compactions_total: int = Field(default=0, serialization_alias="compactionsTotal")
+    num_set: int = Field(default=0, serialization_alias="numSet")
+    len_set: int = Field(default=0, serialization_alias="lenSet")
+    avg_set: float = Field(default=0.0, serialization_alias="avgSet")
+    num_trash: int = Field(default=0, serialization_alias="numTrash")
+    len_trash: int = Field(default=0, serialization_alias="lenTrash")
+    num_ttl: int = Field(default=0, serialization_alias="numTtl")
+    len_ttl: int = Field(default=0, serialization_alias="lenTtl")
+    table_load: float = Field(default=0.0, serialization_alias="tableLoad")
+    table_size: int = Field(default=0, serialization_alias="tableSize")
+    num_slots: int = Field(default=0, serialization_alias="numSlots")
+
+    # Deltas (summed within bucket)
+    passes: int = Field(default=0)
+    duration_ms: int = Field(default=0, serialization_alias="durationMs")
+    duration_max_ms: int = Field(default=0, serialization_alias="durationMaxMs")
+    duration_median_ms: int = Field(default=0, serialization_alias="durationMedianMs")
+    records_rewritten: int = Field(default=0, serialization_alias="recordsRewritten")
+    bytes_rewritten: int = Field(default=0, serialization_alias="bytesRewritten")
+    records_trashed: int = Field(default=0, serialization_alias="recordsTrashed")
+    bytes_trashed: int = Field(default=0, serialization_alias="bytesTrashed")
+    records_expired: int = Field(default=0, serialization_alias="recordsExpired")
+    bytes_expired: int = Field(default=0, serialization_alias="bytesExpired")
+    records_restored: int = Field(default=0, serialization_alias="recordsRestored")
+    bytes_restored: int = Field(default=0, serialization_alias="bytesRestored")
+    logs_reclaimed: int = Field(default=0, serialization_alias="logsReclaimed")
+    bytes_reclaimed: int = Field(default=0, serialization_alias="bytesReclaimed")
+
+    # Number of underlying compaction events folded into this bucket
+    event_count: int = Field(default=0, serialization_alias="eventCount")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class HashstoreCompactionSeriesResponse(BaseModel):
+    start_time: datetime = Field(serialization_alias="startTime")
+    end_time: datetime = Field(serialization_alias="endTime")
+    bucket_seconds: int = Field(serialization_alias="bucketSeconds")
+    buckets: list[HashstoreCompactionBucket] = Field(default_factory=list)
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 # Dash / node-api passthrough schemas (mirrors dashstorj shared ApiTypes)

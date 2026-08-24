@@ -226,7 +226,13 @@ class LogMonitorService:
         for task in self._tasks:
             task.cancel()
         if self._tasks:
-            await asyncio.gather(*self._tasks, return_exceptions=True)
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*self._tasks, return_exceptions=True),
+                    timeout=5.0,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("LogMonitor tasks did not stop within 5s, abandoning")
         self._tasks.clear()
 
     async def _watch_file(self, node_name: str, path: Path) -> None:

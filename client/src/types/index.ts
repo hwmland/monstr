@@ -184,3 +184,52 @@ export interface SatelliteUsageRecord {
 export interface SatelliteUsageResponse {
   periods: Record<string, SatelliteUsageRecord[]>;
 }
+
+// Hashstore compaction
+export type HashstoreTimeRange = "30d" | "90d" | "1y" | "5y";
+
+export interface HashstoreCompactionBucket {
+  bucketStart: string;
+  // Snapshot (latest within bucket)
+  numLogs: number;
+  lenLogs: number;
+  setPercent: number;
+  trashPercent: number;
+  ttlPercent: number;
+  dataReclaimable: number;
+  freeRequired: number;
+  compactionsTotal: number;
+  numSet: number;
+  lenSet: number;
+  avgSet: number;
+  numTrash: number;
+  lenTrash: number;
+  numTtl: number;
+  lenTtl: number;
+  tableLoad: number;
+  tableSize: number;
+  numSlots: number;
+  // Deltas (summed within bucket)
+  passes: number;
+  durationMs: number;
+  durationMaxMs: number;
+  durationMedianMs: number;
+  recordsRewritten: number;
+  bytesRewritten: number;
+  recordsTrashed: number;
+  bytesTrashed: number;
+  recordsExpired: number;
+  bytesExpired: number;
+  recordsRestored: number;
+  bytesRestored: number;
+  logsReclaimed: number;
+  bytesReclaimed: number;
+  eventCount: number;
+}
+
+export interface HashstoreSeriesResponse {
+  startTime: string;
+  endTime: string;
+  bucketSeconds: number;
+  buckets: HashstoreCompactionBucket[];
+}

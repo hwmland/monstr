@@ -1,6 +1,15 @@
 import { create } from "zustand";
 
 const PANEL_VISIBILITY_STORAGE_KEY = "monstr.panelVisibility";
+const HASHSTORE_GROUP_KEY = "monstr.hashstoreGroupEnabled";
+
+const HASHSTORE_PANEL_IDS = [
+  "hashstoreStorage",
+  "hashstoreCompaction",
+  "hashstoreHealth",
+  "hashstoreActivity",
+  "hashstoreDiagnostics",
+] as const;
 
 const persistPanels = (panels: Record<string, boolean>) => {
   if (typeof window === "undefined") {
@@ -16,9 +25,11 @@ const persistPanels = (panels: Record<string, boolean>) => {
 
 interface PanelVisibilityState {
   panels: Record<string, boolean>;
+  hashstoreGroupEnabled: boolean;
   togglePanel: (panelId: string) => void;
   setPanelVisibility: (panelId: string, isVisible: boolean) => void;
   isVisible: (panelId: string) => boolean;
+  toggleHashstoreGroup: () => void;
 }
 
 const DEFAULT_PANELS: Record<string, boolean> = {
@@ -32,6 +43,11 @@ const DEFAULT_PANELS: Record<string, boolean> = {
   longTerm: false,
   diskUsage: false,
   bandwidthUsage: false,
+  hashstoreStorage: true,
+  hashstoreCompaction: true,
+  hashstoreHealth: true,
+  hashstoreActivity: false,
+  hashstoreDiagnostics: false,
 };
 
 const usePanelVisibilityStore = create<PanelVisibilityState>((set, get) => ({
@@ -49,11 +65,18 @@ const usePanelVisibilityStore = create<PanelVisibilityState>((set, get) => ({
     }
     return { ...DEFAULT_PANELS };
   })(),
+  hashstoreGroupEnabled: (() => {
+    if (typeof window !== "undefined") {
+      try {
+        const raw = window.localStorage.getItem(HASHSTORE_GROUP_KEY);
+        if (raw !== null) return raw === "1";
+      } catch { /* ignore */ }
+    }
+    return true;
+  })(),
   togglePanel: (panelId: string) => {
     const panels = get().panels;
     const current = panels[panelId] ?? true;
-    // Merge with defaults to avoid persisting an incomplete object that would
-    // shadow other panel flags when reloaded from storage.
     const next = { ...DEFAULT_PANELS, ...panels, [panelId]: !current };
     set({ panels: next });
     persistPanels(next);
@@ -66,8 +89,18 @@ const usePanelVisibilityStore = create<PanelVisibilityState>((set, get) => ({
     });
   },
   isVisible: (panelId: string) => {
-    const panels = get().panels;
-    return panels[panelId] ?? false;
+    const state = get();
+    if (!state.hashstoreGroupEnabled && (HASHSTORE_PANEL_IDS as readonly string[]).includes(panelId)) {
+      return false;
+    }
+    return state.panels[panelId] ?? false;
+  },
+  toggleHashstoreGroup: () => {
+    const next = !get().hashstoreGroupEnabled;
+    set({ hashstoreGroupEnabled: next });
+    try {
+      window.localStorage.setItem(HASHSTORE_GROUP_KEY, next ? "1" : "0");
+    } catch { /* ignore */ }
   },
 }));
 
