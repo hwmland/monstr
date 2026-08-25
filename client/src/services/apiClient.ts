@@ -23,6 +23,8 @@ import type {
   HashstoreTimeRange,
   HashstoreCompactionBucket,
   HashstoreSeriesResponse,
+  ActiveCompaction,
+  ActiveCompactionsResponse,
 } from "../types";
 
 const DEFAULT_API_BASE_URL = import.meta.env.DEV ? "http://localhost:8000/api" : "/api";
@@ -307,6 +309,44 @@ export const fetchIp24Status = async (): Promise<IP24StatusResponse> => {
     return {};
   }
   return data as IP24StatusResponse;
+};
+
+export const fetchActiveCompactions = async (): Promise<ActiveCompactionsResponse> => {
+  const response = await apiClient.get("/hashstore-compaction/active");
+  const data = response.data;
+  if (!data || typeof data !== "object") {
+    return {};
+  }
+
+  const result: ActiveCompactionsResponse = {};
+  for (const [node, entries] of Object.entries(data as Record<string, unknown>)) {
+    if (!Array.isArray(entries)) {
+      continue;
+    }
+
+    const parsed: ActiveCompaction[] = [];
+    for (const entry of entries) {
+      if (!entry || typeof entry !== "object") {
+        continue;
+      }
+      const record = entry as Record<string, unknown>;
+      const startedAt = String(record.startedAt ?? "");
+      if (!startedAt) {
+        continue;
+      }
+      parsed.push({
+        satelliteId: String(record.satelliteId ?? ""),
+        store: String(record.store ?? ""),
+        startedAt,
+      });
+    }
+
+    if (parsed.length > 0) {
+      result[node] = parsed;
+    }
+  }
+
+  return result;
 };
 
 export const fetchTransferTotals = async (nodes: string[], interval: string): Promise<TransferTotalsResponse> => {

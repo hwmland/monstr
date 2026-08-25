@@ -7,10 +7,11 @@ import NodeSelectionHelp from "../NodeSelectionHelp";
 
 import useNodes from "../../hooks/useNodes";
 import useSelectedNodesStore from "../../store/useSelectedNodes";
-import { SATELLITE_ID_TO_NAME } from "../../constants/satellites";
-import { fetchIp24Status } from "../../services/apiClient";
+import { SATELLITE_ID_TO_NAME, translateSatelliteId } from "../../constants/satellites";
+import { fetchActiveCompactions, fetchIp24Status } from "../../services/apiClient";
 import createRequestDeduper from "../../utils/requestDeduper";
-import type { IP24StatusEntry, NodeInfo } from "../../types";
+import { use24hTime } from "../../utils/time";
+import type { ActiveCompactionsResponse, IP24StatusEntry, NodeInfo } from "../../types";
 
 type DisplayNode = NodeInfo & { isAggregate?: boolean };
 
@@ -67,6 +68,32 @@ const getVettingEntries = (vetting?: Record<string, string | null>): VettingEntr
 };
 
 const AUTO_REFRESH_INTERVAL_MS = 10 * 60 * 1000;
+const COMPACTION_REFRESH_INTERVAL_MS = 10 * 1000;
+
+const formatCompactionStart = (startedAt: string, hour12: boolean): string => {
+  const parsed = new Date(startedAt);
+  if (Number.isNaN(parsed.getTime())) {
+    return startedAt;
+  }
+  return parsed.toLocaleString([], {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12,
+  });
+};
+
+const formatCompactionElapsed = (startedAt: string, now: number): string => {
+  const started = new Date(startedAt).getTime();
+  if (Number.isNaN(started)) {
+    return "";
+  }
+  const totalMinutes = Math.max(0, Math.floor((now - started) / 60000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+};
 
 const NodesPanel: FC = () => {
   const { nodes, isLoading, error, refresh } = useNodes();
@@ -81,6 +108,9 @@ const NodesPanel: FC = () => {
   const isMountedRef = useRef(true);
   const [ip24TooltipAnchor, setIp24TooltipAnchor] = useState<DOMRect | null>(null);
   const [ip24TooltipVisible, setIp24TooltipVisible] = useState(false);
+  const [activeCompactions, setActiveCompactions] = useState<ActiveCompactionsResponse>({});
+  const [compactionTooltipNode, setCompactionTooltipNode] = useState<string | null>(null);
+  const [compactionTooltipAnchor, setCompactionTooltipAnchor] = useState<DOMRect | null>(null);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -149,7 +179,29 @@ const NodesPanel: FC = () => {
     };
   }, [fetchIp24Data]);
 
+  const fetchCompactionData = useCallback(async () => {
+    try {
+      const data = await fetchActiveCompactions();
+      if (!isMountedRef.current) return;
+      setActiveCompactions(data);
+    } catch {
+      // The indicator is non-critical; keep the previous state on failure.
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchCompactionData();
+    const timer = window.setInterval(() => {
+      void fetchCompactionData();
+    }, COMPACTION_REFRESH_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [fetchCompactionData]);
+
   const availableNodeNames = nodes.map((node) => node.name);
+  const hour12 = !use24hTime();
   const displayNodes: DisplayNode[] = [
     { name: "All", path: "", isAggregate: true },
     ...nodes.map((node) => ({ ...node, isAggregate: false })),
@@ -271,6 +323,10 @@ const NodesPanel: FC = () => {
             const hasVetting = vettingEntries.length > 0;
             const hasUnvetted = vettingEntries.some((entry) => !entry.isVetted);
             const showVettingBar = hasVetting && hasUnvetted;
+            const nodeCompactions = node.isAggregate ? [] : activeCompactions[node.name] ?? [];
+            const isCompacting = nodeCompactions.length > 0;
+            const showCompactionTooltip =
+              isCompacting && compactionTooltipNode === node.name && compactionTooltipAnchor !== null;
             const tooltipHidden = suppressedTooltipNode === node.name;
             const tooltipId = hasVetting ? `node-vetting-${sanitizeForId(node.name)}` : undefined;
             const cardClass = [
@@ -321,6 +377,8 @@ const NodesPanel: FC = () => {
                   setSuppressedTooltipNode((prev) => (prev === node.name ? null : prev));
                   setTooltipAnchor(null);
                   setActiveTooltipId(null);
+                  setCompactionTooltipNode((prev) => (prev === node.name ? null : prev));
+                  setCompactionTooltipAnchor(null);
                 }}
                 onKeyDown={(event) => {
                   if (event.key === " " || event.key === "Enter") {
@@ -335,7 +393,28 @@ const NodesPanel: FC = () => {
                 }}
               >
                 <div className="node-card__label">
-                  <span className="node-card__name">{node.name}</span>
+                  <span className="node-card__name-row">
+                    <span className="node-card__name">{node.name}</span>
+                    {isCompacting ? (
+                      <span
+                        className="node-card__compaction-badge"
+                        role="img"
+                        aria-label={`Compaction in progress (${nodeCompactions.length})`}
+                        onMouseEnter={(event: MouseEvent<HTMLElement>) => {
+                          setCompactionTooltipAnchor(event.currentTarget.getBoundingClientRect());
+                          setCompactionTooltipNode(node.name);
+                          setTooltipAnchor(null);
+                          setActiveTooltipId(null);
+                        }}
+                        onMouseLeave={() => {
+                          setCompactionTooltipNode(null);
+                          setCompactionTooltipAnchor(null);
+                        }}
+                      >
+                        C
+                      </span>
+                    ) : null}
+                  </span>
                   {showVettingBar ? (
                     <div className="node-card__vetting-bar" aria-hidden="true">
                       {vettingEntries.map((entry) => (
@@ -378,6 +457,39 @@ const NodesPanel: FC = () => {
                                 }`}
                               >
                                 {entry.isVetted && entry.value ? entry.value : "Not vetted"}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>,
+                      document.body,
+                    )
+                  : null}
+                {showCompactionTooltip
+                  ? createPortal(
+                      <div
+                        className="node-card__compaction-tooltip"
+                        role="note"
+                        style={{
+                          position: "fixed",
+                          top: `${compactionTooltipAnchor.bottom + 8}px`,
+                          left: `${compactionTooltipAnchor.left + compactionTooltipAnchor.width / 2}px`,
+                          transform: "translate(-50%, 0)",
+                        }}
+                      >
+                        <p className="node-card__compaction-title">Compaction in progress</p>
+                        <ul className="node-card__compaction-list">
+                          {nodeCompactions.map((entry) => (
+                            <li
+                              key={`${entry.satelliteId}-${entry.store}`}
+                              className="node-card__compaction-row"
+                            >
+                              <span className="node-card__compaction-satellite">
+                                {translateSatelliteId(entry.satelliteId)} · {entry.store}
+                              </span>
+                              <span className="node-card__compaction-meta">
+                                {formatCompactionStart(entry.startedAt, hour12)} (
+                                {formatCompactionElapsed(entry.startedAt, Date.now())})
                               </span>
                             </li>
                           ))}

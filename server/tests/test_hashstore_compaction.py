@@ -221,6 +221,13 @@ async def test_compaction_log_parsing() -> None:
     assert acc.records_rewritten == 3334 + 2240
     assert acc.records_expired == 5354
     assert acc.logs_reclaimed == 4  # 3 + 1
+    assert acc.started_at == datetime(2026, 5, 27, 23, 10, 40, tzinfo=timezone.utc)
+
+    active = service.active_compactions()
+    assert len(active) == 1
+    assert active[0].source == "TestNode"
+    assert active[0].store == "s0"
+    assert active[0].started_at == datetime(2026, 5, 27, 23, 10, 40, tzinfo=timezone.utc)
 
 
 @pytest.mark.asyncio
@@ -250,11 +257,57 @@ async def test_compaction_finished_removes_accumulator() -> None:
 
     # Accumulator should be removed
     assert key not in service._compaction_accumulators
+    assert service.active_compactions() == []
 
     # _flush_compaction should have been scheduled (via asyncio.ensure_future)
     # In test context, we check that the record was built correctly
     # The ensure_future call means we need to check differently
     # Let's verify the accumulator was consumed (which it was)
+
+
+@pytest.mark.asyncio
+async def test_active_compactions_endpoint() -> None:
+    """The /active endpoint reports in-progress compactions grouped by node."""
+    from server.src.services.log_monitor import LogMonitorService
+
+    app_settings = Settings(sources=[])
+    app = create_app(app_settings)
+    await database.init_database(app_settings)
+    transport = ASGITransport(app=app)
+
+    # The lifespan hook does not run under ASGITransport, so wire the service manually.
+    service = LogMonitorService(app_settings)
+    app.state.log_monitor = service
+
+    beginning_line = '2026-05-27T23:10:40Z\tINFO\thashstore\tbeginning compaction\t{"process": "storagenode", "satellite": "12L9ZFwhzVpuEKMUNUqkaTLGzwY9G24tbiigLiXpmZWKwmcNDDs", "store": "s0", "stats": {}}'
+    service._handle_hashstore_compaction_line("Node1", beginning_line)
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/api/hashstore-compaction/active")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert list(body.keys()) == ["Node1"]
+    entries = body["Node1"]
+    assert len(entries) == 1
+    assert entries[0]["satelliteId"] == "12L9ZFwhzVpuEKMUNUqkaTLGzwY9G24tbiigLiXpmZWKwmcNDDs"
+    assert entries[0]["store"] == "s0"
+    assert entries[0]["startedAt"].startswith("2026-05-27T23:10:40")
+
+
+@pytest.mark.asyncio
+async def test_active_compactions_endpoint_without_service() -> None:
+    """The /active endpoint returns an empty mapping when the log monitor is absent."""
+    app_settings = Settings(sources=[])
+    app = create_app(app_settings)
+    await database.init_database(app_settings)
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/api/hashstore-compaction/active")
+
+    assert response.status_code == 200
+    assert response.json() == {}
 
 
 @pytest.mark.asyncio

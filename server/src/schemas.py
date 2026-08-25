@@ -810,6 +810,24 @@ class HashstoreCompactionSeriesResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class ActiveCompactionEntry(BaseModel):
+    """A hashstore compaction cycle that is currently running on a node."""
+
+    satellite_id: str = Field(
+        serialization_alias="satelliteId",
+        validation_alias="satelliteId",
+        description="Satellite the compaction is running for",
+    )
+    store: str = Field(description="Store being compacted (s0, s1, ...)")
+    started_at: datetime = Field(
+        serialization_alias="startedAt",
+        validation_alias="startedAt",
+        description="Timestamp of the 'beginning compaction' log line",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 # Dash / node-api passthrough schemas (mirrors dashstorj shared ApiTypes)
 class DashStorjSatellite(BaseModel):
     id: str
