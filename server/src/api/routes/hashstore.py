@@ -2,21 +2,23 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from statistics import median
-from typing import List, Optional
+from typing import Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...database import get_session
 from ...models import HashstoreCompaction
 from ...repositories.hashstore_compaction import HashstoreCompactionRepository
 from ...schemas import (
+    ActiveCompactionEntry,
     HashstoreCompactionBucket,
     HashstoreCompactionFilters,
     HashstoreCompactionRead,
     HashstoreCompactionSeriesRequest,
     HashstoreCompactionSeriesResponse,
 )
+from ...services.log_monitor import LogMonitorService
 
 router = APIRouter(prefix="/api/hashstore-compaction", tags=["hashstore-compaction"])
 
@@ -51,6 +53,38 @@ async def list_hashstore_compactions(
         limit=limit,
     )
     return [HashstoreCompactionRead.model_validate(record) for record in records]
+
+
+def _get_log_monitor(request: Request) -> LogMonitorService | None:
+    service = getattr(request.app.state, "log_monitor", None)
+    if isinstance(service, LogMonitorService):
+        return service
+    return None
+
+
+@router.get("/active", response_model=Dict[str, List[ActiveCompactionEntry]])
+async def list_active_compactions(request: Request) -> Dict[str, List[ActiveCompactionEntry]]:
+    """Return the compactions currently in progress, grouped by node name.
+
+    The state is held in memory by the log monitor, so compactions that started before
+    the server was launched are not reported.
+    """
+    service = _get_log_monitor(request)
+    if service is None:
+        return {}
+
+    grouped: Dict[str, List[ActiveCompactionEntry]] = {}
+    for accumulator in service.active_compactions():
+        if accumulator.started_at is None:
+            continue
+        grouped.setdefault(accumulator.source, []).append(
+            ActiveCompactionEntry(
+                satellite_id=accumulator.satellite_id,
+                store=accumulator.store,
+                started_at=accumulator.started_at,
+            )
+        )
+    return grouped
 
 
 def _empty_bucket(bucket_start: datetime) -> dict:

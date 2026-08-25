@@ -104,6 +104,7 @@ class _CompactionAccumulator:
     source: str
     satellite_id: str
     store: str
+    started_at: Optional[datetime] = None
     passes: int = 0
     # Aggregated deltas across passes
     records_rewritten: int = 0
@@ -600,6 +601,14 @@ class LogMonitorService:
 
     # --- Hashstore compaction accumulator ---
 
+    def active_compactions(self) -> List[_CompactionAccumulator]:
+        """Return a snapshot of the compaction cycles that are currently in progress.
+
+        The accumulator mapping is only mutated from the event loop while parsing log
+        lines, so copying the values is sufficient to hand out a consistent snapshot.
+        """
+        return list(self._compaction_accumulators.values())
+
     def _handle_hashstore_compaction_line(self, node_name: str, raw_line: str) -> None:
         """Parse a hashstore log line and feed the compaction accumulator."""
         trimmed = raw_line.rstrip("\n")
@@ -627,9 +636,19 @@ class LogMonitorService:
         key = (node_name, satellite_id, store)
 
         if action == "beginning compaction":
+            try:
+                started_at = datetime.strptime(timestamp_str, "%Y-%m-%dT%H:%M:%SZ").replace(
+                    tzinfo=timezone.utc
+                )
+            except ValueError:
+                started_at = datetime.now(timezone.utc)
+
             # Start a new accumulator (discard any stale incomplete one)
             self._compaction_accumulators[key] = _CompactionAccumulator(
-                source=node_name, satellite_id=satellite_id, store=store
+                source=node_name,
+                satellite_id=satellite_id,
+                store=store,
+                started_at=started_at,
             )
 
         elif action == "compact once started":

@@ -233,3 +233,11 @@ export interface HashstoreSeriesResponse {
   bucketSeconds: number;
   buckets: HashstoreCompactionBucket[];
 }
+
+export interface ActiveCompaction {
+  satelliteId: string;
+  store: string;
+  startedAt: string;
+}
+
+export type ActiveCompactionsResponse = Record<string, ActiveCompaction[]>;
