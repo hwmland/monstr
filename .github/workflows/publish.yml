@@ -6,7 +6,8 @@ on:
     #      - master
     tags:
       - "v*.*.*"
-  workflow_dispatch:     inputs:
+  workflow_dispatch:     
+    inputs:
       image_tag:
         description: Docker image tag to publish
         required: true
