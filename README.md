@@ -348,18 +348,20 @@ The compiled assets land in `client/dist`. On the next backend start, FastAPI wi
 PowerShell (Windows):
 
 ```powershell
-npm run dev   # launches Vite dev server on http://127.0.0.1:5173
-npm test      # runs Vitest
+npm run dev         # Vite on http://127.0.0.1:5173, using the local API
+npm run dev:server  # Vite using http://app-pve2.internal:9898/api
+npm test            # runs Vitest
 ```
 
 Bash (macOS / Linux / WSL):
 
 ```bash
-npm run dev   # launches Vite dev server on http://127.0.0.1:5173
-npm test      # runs Vitest
+npm run dev         # Vite on http://127.0.0.1:5173, using the local API
+npm run dev:server  # Vite using http://app-pve2.internal:9898/api
+npm test            # runs Vitest
 ```
 
-During development the backend API remains available at `http://127.0.0.1:8000/api`.
+`npm run dev` keeps the default API URL at `http://localhost:8000/api`. The `dev:server` script loads `client/.env.server` to target `http://app-pve2.internal:9898/api`; that server must allow browser requests from the Vite origin (`http://127.0.0.1:5173`) through CORS.
 
 ## Container Image
 

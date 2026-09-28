@@ -1,6 +1,6 @@
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, CartesianGrid, ComposedChart, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { fetchPayoutPaystubs } from "../../services/apiClient";
 import createRequestDeduper from "../../utils/requestDeduper";
@@ -108,6 +108,7 @@ interface ChartPoint {
   period: string;
   owed: number;
   held: number;
+  disposed: number;
   distributed: number;
   disk: number;
   download: number;
@@ -240,13 +241,14 @@ const LongTermPanel: FC = () => {
           (acc, record) => {
             acc.owed += record.owed ?? 0;
             acc.held += record.held ?? 0;
+            acc.disposed += record.disposed ?? 0;
             acc.distributed += record.distributed ?? 0;
             acc.disk += record.compAtRest ?? 0;
             acc.download += record.compGet ?? 0;
             acc.repair += (record.compGetRepair ?? 0) + (record.compGetAudit ?? 0);
             return acc;
           },
-          { owed: 0, held: 0, distributed: 0, disk: 0, download: 0, repair: 0 },
+          { owed: 0, held: 0, disposed: 0, distributed: 0, disk: 0, download: 0, repair: 0 },
         );
         const downloadTotal = totals.download + totals.repair;
         return { period, ...totals, downloadTotal, total: totals.disk + downloadTotal } satisfies ChartPoint;
@@ -316,7 +318,8 @@ const LongTermPanel: FC = () => {
         // Accumulate held per source for this period
         for (const record of records) {
           const key = record.source;
-          runningHeldBySource[key] = (runningHeldBySource[key] ?? 0) + (record.held ?? 0);
+          runningHeldBySource[key] =
+            (runningHeldBySource[key] ?? 0) + (record.held ?? 0) - (record.disposed ?? 0);
         }
 
         // Sum all sources for the period total
@@ -364,6 +367,7 @@ const LongTermPanel: FC = () => {
         period: point.period,
         owed: runningOwed,
         held: heldByPeriod[point.period] ?? 0,
+        disposed: point.disposed,
         distributed: runningDistributed,
         disk: runningDisk,
         download: runningDownload,
@@ -558,7 +562,7 @@ const LongTermPanel: FC = () => {
 
         <div className="longterm-chart">
           <ResponsiveContainer width="100%" height={320}>
-            <LineChart data={financialChartData} margin={{ top: 10, right: 24, left: 8, bottom: 12 }}>
+            <ComposedChart data={financialChartData} margin={{ top: 10, right: 24, left: 8, bottom: 12 }}>
               <CartesianGrid strokeDasharray="4 8" stroke="rgba(148, 163, 184, 0.25)" />
               <XAxis dataKey="period" stroke="var(--color-text-muted)" />
               <YAxis
@@ -573,6 +577,9 @@ const LongTermPanel: FC = () => {
                   <Line type="monotone" dataKey="owed" name="Owed" stroke="#38bdf8" strokeWidth={2} dot={false} isAnimationActive={false} />
                   <Line type="monotone" dataKey="held" name="Held" stroke="#f59e0b" strokeWidth={2} dot={false} isAnimationActive={false} />
                   <Line type="monotone" dataKey="distributed" name="Distributed" stroke="#4ade80" strokeWidth={2} dot={false} isAnimationActive={false} />
+                  {financialChartData.some((point) => point.disposed !== 0) ? (
+                    <Bar dataKey="disposed" name="held-back" fill="#55f4f7" barSize={24} isAnimationActive={false} />
+                  ) : null}
                 </>
               ) : (
                 <>
@@ -582,7 +589,7 @@ const LongTermPanel: FC = () => {
                   <Line type="monotone" dataKey="downloadTotal" name="Total Download" stroke="#9d4edd" strokeWidth={2} dot={false} strokeDasharray="6 6" isAnimationActive={false} />
                 </>
               )}
-            </LineChart>
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       </>
