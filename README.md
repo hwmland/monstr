@@ -87,7 +87,11 @@ python -m server.src.cli --source myNode:./testdata/node.log --source otherNode:
 
 Supported CLI flags
 
+- `--config-file PATH` — Load backend settings from a JSONC file.
+- `--config-json JSONC` — Load backend settings from an inline JSONC value. This is mutually exclusive with `--config-file`.
 - `--source NAME:SPEC` (repeatable) — Declare a log source in the preferred sequence. Use `NAME:PATH` for local log files or `NAME:HOST:PORT` for remote TCP sources. Repeat the flag to declare multiple sources; their declared order is preserved at startup. Append `|http://localhost:14002` (or another HTTP(S) URL) to associate a nodeapi endpoint with the source.
+
+  **Deprecation notice:** Local file sources (`--source NAME:PATH` or JSONC `type: "file"`) are obsolete, are no longer guaranteed to work, and will be removed in a future release. Use streaming TCP sources (`--source NAME:HOST:PORT` or JSONC `type: "tcp"`) instead.
 
   Implementation note: you can use the companion project `hwmland/tailsender` as a lightweight remote sender that tails a file and forwards appended lines to Monstr over TCP. Configure a tailsender instance on the remote host and point Monstr at it with `--source name:host:port`.
 
@@ -98,9 +102,124 @@ Supported CLI flags
 
 Environment variables
 
+- `MONSTR_CONFIG_FILE` — Path to a JSONC configuration file.
+- `MONSTR_CONFIG_JSON` — Inline JSONC configuration, suitable for a Docker Compose YAML block scalar. Set at most one of these selectors unless a CLI config option is supplied; an explicit CLI selector takes precedence over both.
 - `MONSTR_LOG_OVERRIDES` — Comma-separated `LOGGER:LEVEL` pairs (e.g. `root:INFO,services.cleanup:WARNING`). The CLI `--log` flag takes precedence for any logger it names.
 
-Examples
+### JSONC backend configuration
+
+JSONC adds comments and trailing commas to JSON. The configuration is partial: omitted values continue to come from legacy `MONSTR_*` environment variables or application defaults. The grouped keys map to the existing backend settings:
+
+```jsonc
+{
+  "api": {
+    "host": "0.0.0.0",
+    "port": 8000,
+    "reload": false,
+    "log_level": "info",
+    "cors_allow_origins": ["http://localhost:5173", "http://127.0.0.1:5173"]
+  },
+  "database": {
+    "url": "sqlite+aiosqlite:///./data/monstr.db",
+    "sql_echo": false,
+    "write_suspend_seconds": 60
+  },
+  "nodeapi": {
+    "poll_interval": 1.0, // Log polling interval
+    "batch_size": 32,
+    "unprocessed_dir": "../data/",
+    "poll_interval_seconds": 60,
+    "estimated_payout_interval_seconds": 300,
+    "held_history_interval_seconds": 300,
+    "satellite_details_interval_seconds": 300,
+    "paystub_interval_seconds": 600
+  },
+  "nodegroups": [
+    {
+      "name": "group-a",
+      "icon": "mdi:home",
+      "locations": [
+        {
+          "alias": "site-a",
+          "ip": "192.0.2.10",
+          "nodes": [
+            {
+              "name": "node-a",
+              "type": "tcp",
+              "host": "logs.example.net",
+              "port": 9001,
+              "nodeapi_url": "http://node-a.example.net:14001/",
+              "disqualifications": [
+                { "satellite_id": null, "period": "2025-10" }
+              ]
+            },
+            {
+              "name": "node-b",
+              "type": "file",
+              "path": "./logs/node-b.log"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "maintenance": {
+    "cleanup_interval_seconds": 300,
+    "grouping_interval_seconds": 120,
+    "retention": {
+      "default_minutes": 40320,
+      "transfers_minutes": 1440,
+      "log_entries_minutes": 40320,
+      "transfer_grouped_minutes": -1,
+      "hashstore_compaction_minutes": 2628000
+    }
+  },
+  "frontend": {
+    "dist_dir": "../client/dist"
+  },
+  "logging": {
+    "overrides": {
+      "api.call": "DEBUG"
+    }
+  }
+}
+```
+
+Each node uses `type: "tcp"` with `host` and `port`, or `type: "file"` with `path`; `nodeapi_url` is optional. A location's IP24 expected-instance count is derived from the number of valid nodes in its `nodes` array. Node sources are applied in nodegroup, location, then node order. Nodegroup names are retained for future use. A node's optional `disqualifications` list inherits that node's name as the source; `satellite_id` may be omitted, `null`, or `"all"` to mean all satellites.
+
+Each nodegroup may optionally specify an MDI icon identifier such as `"icon": "mdi:home"` as a sibling of `name` and `locations`. The identifier must be a non-empty `mdi:<name>` value; the backend validates its syntax but does not contact Iconify. The browser loads configured icons from `https://api.iconify.design`, so the client browser needs network access to that service. Icons appear before member node names on node buttons and before group names in the nodegroup selector; if an icon cannot be loaded, selection remains usable and shows an accessible fallback.
+
+When `nodegroups` is present, it supplies the source, IP24, and disqualification settings. If omitted, those settings continue to use the legacy `MONSTR_SOURCES`, `MONSTR_IP24`, and `MONSTR_DISQUAL` values. The legacy repeatable `--source`, `--ip24`, and `--disqual` flags remain supported and replace their corresponding configured list. Explicit CLI flags override JSONC; JSONC overrides legacy environment variables and `.env`; defaults apply last.
+
+Unknown JSONC keys produce a warning and are ignored. Invalid entries in node, location, or disqualification lists produce a warning and are skipped; an all-invalid configured list becomes empty. Invalid scalar values, invalid list containers, or an unreadable/malformed JSONC document stop startup with a clear configuration error; setting errors include their config path. A configured group `icon` with invalid syntax also stops startup with its config path.
+
+Nodegroup names must be unique without regard to case; `All` and `<groups>` are reserved. Node names must be unique across groups and cannot equal `All` in any letter case. These identity conflicts stop startup. Empty groups are returned by the nodegroups API but disabled in the client selector.
+
+You can pass a JSONC file or inline JSONC from the CLI:
+
+PowerShell:
+
+```powershell
+python -m server.src.cli --config-file .local\config.local.jsonc
+
+$config = @'
+{
+  "api": { "port": 8000 }
+}
+'@
+python -m server.src.cli --config-json $config
+```
+
+Bash:
+
+```bash
+python -m server.src.cli --config-file .local/config.local.jsonc
+python -m server.src.cli --config-json '{"api":{"port":8000}}'
+```
+
+### Legacy CLI examples
+
+The flags and environment variables below remain available for compatibility.
 
 PowerShell (Windows) example that sets two nodes and enables the request-finish debug messages emitted by the `api.call` logger:
 
@@ -162,6 +281,7 @@ Notes:
 ### What the server serves
 
 - OpenAPI docs: once running, the backend exposes the OpenAPI UI at `http://<host>:<port>/api/docs` (default `http://127.0.0.1:8000/api/docs`).
+- Nodegroups API: `GET /api/nodegroups` returns active configured group names, their node names, and an optional MDI `icon` identifier. Empty groups are returned with an empty `nodes` array; groups are omitted when legacy sources override nodegroups.
 - Frontend SPA: if `client/dist` exists (a production build of the client), FastAPI will serve the compiled SPA at the root path `/` (for example `http://127.0.0.1:8000/`).
 
 - Overall status API: the server exposes a lightweight health/status endpoint at
@@ -402,7 +522,9 @@ docker run -p 8000:8000 \
   monstr:latest
 ```
 
-Docker Compose example (service runs the CLI and sets logger overrides):
+Docker Compose can mount a JSONC file (recommended for larger settings) or put inline JSONC in an environment block. The repository's `.local/` directory is ignored by Git, making it suitable for a private local configuration file.
+
+Mounted-file example:
 
 ```yaml
 services:
@@ -411,10 +533,48 @@ services:
     ports:
       - "8000:8000"
     environment:
-      MONSTR_SOURCES="hashnode:/logs/hash.log|http://localhost:14002,blobnode:/logs/blob.log"
-      MONSTR_LOG_OVERRIDES="root:INFO,services.cleanup:WARNING"
+      MONSTR_CONFIG_FILE: /config/monstr.jsonc
     volumes:
-      - ./testdata:/logs:ro
+      - ./.local/config.local.jsonc:/config/monstr.jsonc:ro
+      - ./logs:/logs:ro
+```
+
+Inline JSONC example:
+
+```yaml
+services:
+  monstr:
+    image: ghcr.io/hwmland/monstr:latest
+    ports:
+      - "8000:8000"
+    environment:
+      MONSTR_CONFIG_JSON: |
+        {
+          "api": {
+            "host": "0.0.0.0",
+            "port": 8000
+          },
+          "nodegroups": [
+            {
+              "name": "group-a",
+              "icon": "mdi:home",
+              "locations": [
+                {
+                  "alias": "site-a",
+                  "ip": "192.0.2.10",
+                  "nodes": [
+                    {
+                      "name": "node-a",
+                      "type": "tcp",
+                      "host": "logs.example.net",
+                      "port": 9001
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
 ```
 
 ## Development notes and next steps

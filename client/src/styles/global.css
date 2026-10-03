@@ -127,6 +127,18 @@ select.button option:disabled {
   white-space: nowrap;
 }
 
+.panel-controls-combo__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.panel-controls-combo__icon .node-card__group-icon,
+.panel-controls-combo__icon .node-card__group-icon-placeholder {
+  font-size: 0.65rem;
+}
+
 .panel-controls-combo__arrow {
   font-size: 0.65rem;
   opacity: 0.8;
@@ -307,6 +319,8 @@ select.button option:disabled {
 }
 
 .panel--top {
+  position: relative;
+  z-index: 1;
   border: 1px solid rgba(56, 189, 248, 0.35);
   background: linear-gradient(150deg, rgba(15, 118, 110, 0.18), rgba(17, 24, 39, 0.92));
 }
@@ -623,6 +637,27 @@ select.button option:disabled {
   align-items: center;
   justify-content: center;
   gap: 0.3rem;
+}
+
+.node-card__group-icon,
+.node-card__group-icon-placeholder,
+.node-card__group-icon-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 1em;
+  width: 1em;
+  height: 1em;
+  font-size: 0.85rem;
+}
+
+.node-card__group-icon-fallback {
+  border: 1px solid var(--color-danger);
+  border-radius: 50%;
+  color: var(--color-danger);
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .node-card__compaction-badge {

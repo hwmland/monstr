@@ -1,11 +1,22 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from 'react';
 
-import { fetchNodes } from "../services/apiClient";
-import useNodeStore from "../store/useNodeStore";
-import createRequestDeduper from "../utils/requestDeduper";
+import { fetchNodeGroups, fetchNodes } from '../services/apiClient';
+import useNodeStore from '../store/useNodeStore';
+import createRequestDeduper from '../utils/requestDeduper';
 
 const useNodes = () => {
-  const { nodes, isLoading, error, setNodes, setLoading, setError } = useNodeStore();
+  const {
+    nodes,
+    nodegroups,
+    isLoading,
+    error,
+    nodegroupsError,
+    setNodes,
+    setNodegroups,
+    setLoading,
+    setError,
+    setNodegroupsError,
+  } = useNodeStore();
 
   const load = useCallback(async () => {
     const deduper = deduperRef.current;
@@ -13,15 +24,32 @@ const useNodes = () => {
 
     setLoading(true);
     setError(undefined);
+    setNodegroupsError(undefined);
     try {
-      const data = await fetchNodes();
-      setNodes(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load nodes");
+      const [nodesResult, nodegroupsResult] = await Promise.allSettled([
+        fetchNodes(),
+        fetchNodeGroups(),
+      ]);
+      if (nodesResult.status === 'fulfilled') {
+        setNodes(nodesResult.value);
+      } else {
+        setError(
+          nodesResult.reason instanceof Error ? nodesResult.reason.message : 'Unable to load nodes',
+        );
+      }
+      if (nodegroupsResult.status === 'fulfilled') {
+        setNodegroups(nodegroupsResult.value);
+      } else {
+        setNodegroupsError(
+          nodegroupsResult.reason instanceof Error
+            ? nodegroupsResult.reason.message
+            : 'Unable to load node groups',
+        );
+      }
     } finally {
       setLoading(false);
     }
-  }, [setError, setLoading, setNodes]);
+  }, [setError, setLoading, setNodegroups, setNodegroupsError, setNodes]);
 
   const deduperRef = useRef(createRequestDeduper());
 
@@ -29,7 +57,7 @@ const useNodes = () => {
     void load();
   }, [load]);
 
-  return { nodes, isLoading, error, refresh: load };
+  return { nodes, nodegroups, isLoading, error, nodegroupsError, refresh: load };
 };
 
 export default useNodes;

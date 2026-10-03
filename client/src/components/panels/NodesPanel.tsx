@@ -1,17 +1,20 @@
-import { useCallback, useEffect, useState, useRef, type FC, type MouseEvent } from "react";
-import { createPortal } from "react-dom";
-import { FaExclamationTriangle } from "react-icons/fa";
+import { useCallback, useEffect, useMemo, useState, useRef, type FC, type MouseEvent } from 'react';
+import { createPortal } from 'react-dom';
+import { FaExclamationTriangle } from 'react-icons/fa';
 
-import Settings from "../Settings";
-import NodeSelectionHelp from "../NodeSelectionHelp";
+import Settings from '../Settings';
+import NodeSelectionHelp from '../NodeSelectionHelp';
+import PanelControlsCombo from '../PanelControlsCombo';
+import GroupNodeIcon from '../GroupNodeIcon';
 
-import useNodes from "../../hooks/useNodes";
-import useSelectedNodesStore from "../../store/useSelectedNodes";
-import { SATELLITE_ID_TO_NAME, translateSatelliteId } from "../../constants/satellites";
-import { fetchActiveCompactions, fetchIp24Status } from "../../services/apiClient";
-import createRequestDeduper from "../../utils/requestDeduper";
-import { use24hTime } from "../../utils/time";
-import type { ActiveCompactionsResponse, IP24StatusEntry, NodeInfo } from "../../types";
+import useNodes from '../../hooks/useNodes';
+import useSelectedNodesStore from '../../store/useSelectedNodes';
+import { SATELLITE_ID_TO_NAME, translateSatelliteId } from '../../constants/satellites';
+import { fetchActiveCompactions, fetchIp24Status } from '../../services/apiClient';
+import createRequestDeduper from '../../utils/requestDeduper';
+import { ALL_NODES_VALUE, getNodeGroupSelectionValue } from '../../utils/nodeGroups';
+import { use24hTime } from '../../utils/time';
+import type { ActiveCompactionsResponse, IP24StatusEntry, NodeInfo } from '../../types';
 
 type DisplayNode = NodeInfo & { isAggregate?: boolean };
 
@@ -23,18 +26,18 @@ type VettingEntry = {
 };
 
 const VETTING_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  year: "numeric",
-  month: "short",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
+  year: 'numeric',
+  month: 'short',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
 });
 
 const sanitizeForId = (value: string): string =>
   value
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "node";
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'node';
 
 const formatVettingDate = (value: string): string => {
   const parsed = new Date(value);
@@ -76,10 +79,10 @@ const formatCompactionStart = (startedAt: string, hour12: boolean): string => {
     return startedAt;
   }
   return parsed.toLocaleString([], {
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
     hour12,
   });
 };
@@ -87,7 +90,7 @@ const formatCompactionStart = (startedAt: string, hour12: boolean): string => {
 const formatCompactionElapsed = (startedAt: string, now: number): string => {
   const started = new Date(startedAt).getTime();
   if (Number.isNaN(started)) {
-    return "";
+    return '';
   }
   const totalMinutes = Math.max(0, Math.floor((now - started) / 60000));
   const hours = Math.floor(totalMinutes / 60);
@@ -96,13 +99,13 @@ const formatCompactionElapsed = (startedAt: string, now: number): string => {
 };
 
 const NodesPanel: FC = () => {
-  const { nodes, isLoading, error, refresh } = useNodes();
-  const { toggleNode, isSelected } = useSelectedNodesStore();
+  const { nodes, nodegroups, isLoading, error, nodegroupsError, refresh } = useNodes();
+  const { selected, toggleNode, selectNodes, isSelected } = useSelectedNodesStore();
   const [suppressedTooltipNode, setSuppressedTooltipNode] = useState<string | null>(null);
   const [tooltipAnchor, setTooltipAnchor] = useState<DOMRect | null>(null);
   const [activeTooltipId, setActiveTooltipId] = useState<string | null>(null);
-  const [ip24Level, setIp24Level] = useState<"none" | "warn" | "error">("none");
-  const [ip24Message, setIp24Message] = useState<string>("");
+  const [ip24Level, setIp24Level] = useState<'none' | 'warn' | 'error'>('none');
+  const [ip24Message, setIp24Message] = useState<string>('');
   const [ip24Entries, setIp24Entries] = useState<Array<{ ip: string; entry: IP24StatusEntry }>>([]);
   const deduperRef = useRef(createRequestDeduper());
   const isMountedRef = useRef(true);
@@ -120,7 +123,7 @@ const NodesPanel: FC = () => {
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (typeof window === 'undefined') {
       return undefined;
     }
     const timer = window.setInterval(() => {
@@ -133,21 +136,23 @@ const NodesPanel: FC = () => {
 
   const computeIp24Status = useCallback((entries: IP24StatusEntry[]) => {
     if (!entries.length) {
-      setIp24Level("none");
-      setIp24Message("");
+      setIp24Level('none');
+      setIp24Message('');
       return;
     }
     const hasError = entries.some((entry) => entry.valid === false);
-    const hasWarn = entries.some((entry) => entry.instances !== null && entry.instances !== entry.expectedInstances);
+    const hasWarn = entries.some(
+      (entry) => entry.instances !== null && entry.instances !== entry.expectedInstances,
+    );
     if (hasError) {
-      setIp24Level("error");
-      setIp24Message("IP24 check failed for one or more IPs");
+      setIp24Level('error');
+      setIp24Message('IP24 check failed for one or more IPs');
     } else if (hasWarn) {
-      setIp24Level("warn");
-      setIp24Message("IP24 expected vs actual instances differ");
+      setIp24Level('warn');
+      setIp24Message('IP24 expected vs actual instances differ');
     } else {
-      setIp24Level("none");
-      setIp24Message("");
+      setIp24Level('none');
+      setIp24Message('');
     }
   }, []);
 
@@ -162,8 +167,8 @@ const NodesPanel: FC = () => {
       computeIp24Status(entries.map((item) => item.entry));
     } catch {
       if (!isMountedRef.current) return;
-      setIp24Level("error");
-      setIp24Message("IP24 check failed to fetch");
+      setIp24Level('error');
+      setIp24Message('IP24 check failed to fetch');
       setIp24Entries([]);
     }
   }, [computeIp24Status]);
@@ -200,15 +205,58 @@ const NodesPanel: FC = () => {
     };
   }, [fetchCompactionData]);
 
-  const availableNodeNames = nodes.map((node) => node.name);
+  const availableNodeNames = useMemo(() => nodes.map((node) => node.name), [nodes]);
+  const groupIconsByNode = useMemo(() => {
+    const iconsByNode = new Map<string, string>();
+    for (const group of nodegroups) {
+      if (!group.icon) {
+        continue;
+      }
+      for (const nodeName of group.nodes) {
+        iconsByNode.set(nodeName, group.icon);
+      }
+    }
+    return iconsByNode;
+  }, [nodegroups]);
+  const selectedGroupValue = getNodeGroupSelectionValue(selected, availableNodeNames, nodegroups);
+  const groupOptions = useMemo(
+    () => [
+      { value: ALL_NODES_VALUE, label: ALL_NODES_VALUE },
+      ...nodegroups.map((group) => ({
+        value: group.name,
+        label: group.name,
+        icon: group.icon ? <GroupNodeIcon icon={group.icon} /> : undefined,
+        disabled:
+          group.nodes.length === 0 ||
+          group.nodes.some((name) => !availableNodeNames.includes(name)),
+      })),
+    ],
+    [availableNodeNames, nodegroups],
+  );
   const hour12 = !use24hTime();
   const displayNodes: DisplayNode[] = [
-    { name: "All", path: "", isAggregate: true },
+    { name: 'All', path: '', isAggregate: true },
     ...nodes.map((node) => ({ ...node, isAggregate: false })),
   ];
 
   const handleSelection = (name: string, modifiers?: { shift?: boolean; ctrl?: boolean }) => {
     toggleNode(name, availableNodeNames, modifiers);
+  };
+
+  const handleGroupSelection = (value: string) => {
+    if (value === ALL_NODES_VALUE) {
+      selectNodes([ALL_NODES_VALUE], availableNodeNames);
+      return;
+    }
+
+    const group = nodegroups.find((candidate) => candidate.name === value);
+    if (
+      group &&
+      group.nodes.length > 0 &&
+      group.nodes.every((name) => availableNodeNames.includes(name))
+    ) {
+      selectNodes(group.nodes, availableNodeNames);
+    }
   };
 
   const handleRefreshClick = () => {
@@ -224,10 +272,10 @@ const NodesPanel: FC = () => {
           <p className="panel__subtitle">Connected storagenodes available for monitoring.</p>
         </div>
         <div className="panel__actions">
-          {ip24Level !== "none" ? (
+          {ip24Level !== 'none' ? (
             <span
               className={`nodes-ip24-indicator nodes-ip24-indicator--${ip24Level}`}
-              aria-label={ip24Message || "IP24 status"}
+              aria-label={ip24Message || 'IP24 status'}
               tabIndex={0}
               onMouseEnter={(event) => {
                 const rect = event.currentTarget.getBoundingClientRect();
@@ -257,10 +305,10 @@ const NodesPanel: FC = () => {
                   className="nodes-ip24-tooltip"
                   role="note"
                   style={{
-                    position: "fixed",
+                    position: 'fixed',
                     top: `${ip24TooltipAnchor.bottom + 8}px`,
                     left: `${ip24TooltipAnchor.left + ip24TooltipAnchor.width / 2}px`,
-                    transform: "translate(-50%, 0)",
+                    transform: 'translate(-50%, 0)',
                   }}
                 >
                   <div className="nodes-ip24-tooltip__title">IP24 status</div>
@@ -278,20 +326,23 @@ const NodesPanel: FC = () => {
                       <tbody>
                         {ip24Entries.map(({ ip, entry }) => {
                           const isError = entry.valid === false;
-                          const isWarn = entry.instances !== null && entry.instances !== entry.expectedInstances;
+                          const isWarn =
+                            entry.instances !== null && entry.instances !== entry.expectedInstances;
                           const rowClass = [
-                            "nodes-ip24-row",
-                            isError ? "nodes-ip24-row--error" : "",
-                            !isError && isWarn ? "nodes-ip24-row--warn" : "",
+                            'nodes-ip24-row',
+                            isError ? 'nodes-ip24-row--error' : '',
+                            !isError && isWarn ? 'nodes-ip24-row--warn' : '',
                           ]
                             .filter(Boolean)
-                            .join(" ");
+                            .join(' ');
 
                           return (
                             <tr key={ip} className={rowClass}>
                               <td>{ip}</td>
                               <td>{entry.expectedInstances}</td>
-                              <td>{entry.valid === false ? "obsolete" : entry.instances ?? "—"}</td>
+                              <td>
+                                {entry.valid === false ? 'obsolete' : (entry.instances ?? '—')}
+                              </td>
                             </tr>
                           );
                         })}
@@ -302,10 +353,22 @@ const NodesPanel: FC = () => {
                 document.body,
               )
             : null}
+          <PanelControlsCombo
+            options={groupOptions}
+            activeValue={selectedGroupValue}
+            displayOnlyLabel={selectedGroupValue === null ? '<groups>' : undefined}
+            onSelect={handleGroupSelection}
+            ariaLabel="Node group selection"
+          />
           <NodeSelectionHelp />
           <Settings />
-          <button className="button" type="button" onClick={handleRefreshClick} disabled={isLoading}>
-            {isLoading ? "Refreshing…" : "Refresh"}
+          <button
+            className="button"
+            type="button"
+            onClick={handleRefreshClick}
+            disabled={isLoading}
+          >
+            {isLoading ? 'Refreshing…' : 'Refresh'}
           </button>
         </div>
       </header>
@@ -313,29 +376,35 @@ const NodesPanel: FC = () => {
       {/* Settings panel picker is rendered by the Settings component */}
 
       {error ? <p className="panel__error">{error}</p> : null}
+      {nodegroupsError ? (
+        <p className="panel__error">Unable to load node groups: {nodegroupsError}</p>
+      ) : null}
 
       <div className="panel__body">
         {isLoading && nodes.length === 0 ? <p className="panel__status">Loading nodes…</p> : null}
         <div className="nodes-grid">
           {displayNodes.map((node) => {
             const selected = isSelected(node.name);
+            const groupIcon = node.isAggregate ? undefined : groupIconsByNode.get(node.name);
             const vettingEntries = node.isAggregate ? [] : getVettingEntries(node.vetting);
             const hasVetting = vettingEntries.length > 0;
             const hasUnvetted = vettingEntries.some((entry) => !entry.isVetted);
             const showVettingBar = hasVetting && hasUnvetted;
-            const nodeCompactions = node.isAggregate ? [] : activeCompactions[node.name] ?? [];
+            const nodeCompactions = node.isAggregate ? [] : (activeCompactions[node.name] ?? []);
             const isCompacting = nodeCompactions.length > 0;
             const showCompactionTooltip =
-              isCompacting && compactionTooltipNode === node.name && compactionTooltipAnchor !== null;
+              isCompacting &&
+              compactionTooltipNode === node.name &&
+              compactionTooltipAnchor !== null;
             const tooltipHidden = suppressedTooltipNode === node.name;
             const tooltipId = hasVetting ? `node-vetting-${sanitizeForId(node.name)}` : undefined;
             const cardClass = [
-              "node-card",
-              selected ? "node-card--selected" : "",
-              hasVetting ? "node-card--has-vetting" : "",
+              'node-card',
+              selected ? 'node-card--selected' : '',
+              hasVetting ? 'node-card--has-vetting' : '',
             ]
               .filter(Boolean)
-              .join(" ");
+              .join(' ');
 
             const handleClick = (event: MouseEvent<HTMLElement>) => {
               handleSelection(node.name, {
@@ -381,7 +450,7 @@ const NodesPanel: FC = () => {
                   setCompactionTooltipAnchor(null);
                 }}
                 onKeyDown={(event) => {
-                  if (event.key === " " || event.key === "Enter") {
+                  if (event.key === ' ' || event.key === 'Enter') {
                     event.preventDefault();
                     handleSelection(node.name, {
                       shift: event.shiftKey,
@@ -394,6 +463,7 @@ const NodesPanel: FC = () => {
               >
                 <div className="node-card__label">
                   <span className="node-card__name-row">
+                    {groupIcon ? <GroupNodeIcon icon={groupIcon} /> : null}
                     <span className="node-card__name">{node.name}</span>
                     {isCompacting ? (
                       <span
@@ -422,10 +492,10 @@ const NodesPanel: FC = () => {
                           key={`${entry.id}-segment`}
                           className={`node-card__vetting-bar-segment${
                             entry.isVetted
-                              ? " node-card__vetting-bar-segment--ok"
-                              : " node-card__vetting-bar-segment--pending"
+                              ? ' node-card__vetting-bar-segment--ok'
+                              : ' node-card__vetting-bar-segment--pending'
                           }`}
-                          title={`${entry.label}: ${entry.isVetted ? "Vetted" : "Not vetted"}`}
+                          title={`${entry.label}: ${entry.isVetted ? 'Vetted' : 'Not vetted'}`}
                         />
                       ))}
                     </div>
@@ -438,10 +508,10 @@ const NodesPanel: FC = () => {
                         id={tooltipId}
                         role="note"
                         style={{
-                          position: "fixed",
+                          position: 'fixed',
                           top: `${tooltipAnchor.bottom + 8}px`,
                           left: `${tooltipAnchor.left + tooltipAnchor.width / 2}px`,
-                          transform: "translate(-50%, 0)",
+                          transform: 'translate(-50%, 0)',
                         }}
                       >
                         <p className="node-card__vetting-title">Vetting status</p>
@@ -452,11 +522,11 @@ const NodesPanel: FC = () => {
                               <span
                                 className={`node-card__vetting-status${
                                   entry.isVetted && entry.value
-                                    ? ""
-                                    : " node-card__vetting-status--pending"
+                                    ? ''
+                                    : ' node-card__vetting-status--pending'
                                 }`}
                               >
-                                {entry.isVetted && entry.value ? entry.value : "Not vetted"}
+                                {entry.isVetted && entry.value ? entry.value : 'Not vetted'}
                               </span>
                             </li>
                           ))}
@@ -471,10 +541,10 @@ const NodesPanel: FC = () => {
                         className="node-card__compaction-tooltip"
                         role="note"
                         style={{
-                          position: "fixed",
+                          position: 'fixed',
                           top: `${compactionTooltipAnchor.bottom + 8}px`,
                           left: `${compactionTooltipAnchor.left + compactionTooltipAnchor.width / 2}px`,
-                          transform: "translate(-50%, 0)",
+                          transform: 'translate(-50%, 0)',
                         }}
                       >
                         <p className="node-card__compaction-title">Compaction in progress</p>

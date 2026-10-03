@@ -18,6 +18,7 @@ server/.ruff_cache/
 
 # Environment
 .env
+.local/
 
 # Copilot
 .github/copilot-instructions.md

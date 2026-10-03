@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import pytest
 from datetime import datetime, timezone
 
+import pytest
 from httpx import ASGITransport, AsyncClient
 
 from server.src.config import Settings
+from server.src.config_loader import load_settings
 from server.src.core.app import create_app
 from server.src.services.node_api import NodeApiService, NodeData
 
@@ -76,3 +77,57 @@ async def test_list_nodes_includes_vetting_when_service_available(tmp_path) -> N
         "satB": None,
     }
     assert payload_by_name["beta"]["vetting"] is None
+
+
+@pytest.mark.asyncio
+async def test_list_nodegroups_returns_active_groups_and_empty_groups() -> None:
+    settings = load_settings(config_json="""{
+          "nodegroups": [
+            {
+              "name": "group-a",
+              "icon": "mdi:home",
+              "locations": [
+                {
+                  "alias": "site-a",
+                  "ip": "192.0.2.10",
+                  "nodes": [
+                    { "name": "alpha", "type": "file", "path": "./alpha.log" },
+                    { "name": "beta", "type": "tcp", "host": "logs.example.net", "port": 9001 }
+                  ]
+                }
+              ]
+            },
+            { "name": "empty-group", "locations": [] }
+          ]
+        }""")
+    app = create_app(settings)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/api/nodegroups")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {"name": "group-a", "nodes": ["alpha", "beta"], "icon": "mdi:home"},
+        {"name": "empty-group", "nodes": [], "icon": None},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_list_nodegroups_suppresses_groups_when_legacy_sources_override() -> None:
+    settings = load_settings(
+        config_json='{"nodegroups":[{"name":"configured","locations":[]}]}',
+        overrides={"sources": ["legacy:logs.example.net:9001"]},
+    )
+    app = create_app(settings)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/api/nodegroups")
+
+    assert response.status_code == 200
+    assert response.json() == []

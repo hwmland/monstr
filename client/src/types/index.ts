@@ -5,6 +5,12 @@ export interface NodeInfo {
   vetting?: Record<string, string | null>;
 }
 
+export interface NodeGroupInfo {
+  name: string;
+  nodes: string[];
+  icon?: string;
+}
+
 export interface SatelliteReputation {
   satelliteId: string;
   satelliteName: string;
@@ -186,7 +192,7 @@ export interface SatelliteUsageResponse {
 }
 
 // Hashstore compaction
-export type HashstoreTimeRange = "30d" | "90d" | "1y" | "5y";
+export type HashstoreTimeRange = '30d' | '90d' | '1y' | '5y';
 
 export interface HashstoreCompactionBucket {
   bucketStart: string;

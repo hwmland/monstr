@@ -1,13 +1,13 @@
-import "@testing-library/jest-dom";
+import '@testing-library/jest-dom/vitest';
 
 class ResizeObserverMock implements ResizeObserver {
-	constructor(_callback: ResizeObserverCallback) {}
+  constructor(_callback: ResizeObserverCallback) {}
 
-	observe(): void {}
+  observe(): void {}
 
-	unobserve(): void {}
+  unobserve(): void {}
 
-	disconnect(): void {}
+  disconnect(): void {}
 }
 
 globalThis.ResizeObserver = ResizeObserverMock;

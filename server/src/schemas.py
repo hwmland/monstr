@@ -34,13 +34,11 @@ class LogEntryFilters(BaseModel):
     level: Optional[str] = Field(
         default=None, description="Filter by log level, e.g. INFO, WARN, ERROR"
     )
-    area: Optional[str] = Field(
-        default=None, description="Filter by Storj subsystem area value"
+    area: Optional[str] = Field(default=None, description="Filter by Storj subsystem area value")
+    action: Optional[str] = Field(default=None, description="Filter by action within the subsystem")
+    limit: int = Field(
+        default=100, ge=1, le=1000, description="Maximum number of records to return"
     )
-    action: Optional[str] = Field(
-        default=None, description="Filter by action within the subsystem"
-    )
-    limit: int = Field(default=100, ge=1, le=1000, description="Maximum number of records to return")
 
 
 class AccessLogRead(BaseModel):
@@ -81,7 +79,9 @@ class ReputationRead(BaseModel):
 class ReputationFilters(BaseModel):
     source: Optional[str] = Field(default=None, description="Filter by configured node name")
     satellite_id: Optional[str] = Field(default=None, description="Filter by satellite identifier")
-    limit: int = Field(default=100, ge=1, le=1000, description="Maximum number of records to return")
+    limit: int = Field(
+        default=100, ge=1, le=1000, description="Maximum number of records to return"
+    )
 
 
 class ReputationPanelRequest(BaseModel):
@@ -121,7 +121,9 @@ class TransferCreate(BaseModel):
     is_repair: bool = Field(..., description="True when the transfer is a repair operation")
     size: int = Field(..., description="Transfer size in bytes")
     offset: Optional[int] = Field(default=None, description="Transfer offset")
-    remote_address: Optional[str] = Field(default=None, description="Remote address for the transfer")
+    remote_address: Optional[str] = Field(
+        default=None, description="Remote address for the transfer"
+    )
 
 
 class TransferRead(BaseModel):
@@ -152,7 +154,9 @@ class TransferFilters(BaseModel):
 
 
 class TransferActualRequest(BaseModel):
-    nodes: list[str] = Field(default_factory=list, description="Nodes to include in the aggregation")
+    nodes: list[str] = Field(
+        default_factory=list, description="Nodes to include in the aggregation"
+    )
 
 
 class TransferActualMetrics(BaseModel):
@@ -192,26 +196,64 @@ class TransferActualResponse(BaseModel):
 class TransferGroupedCreate(BaseModel):
     source: str
     satellite_id: str = Field(serialization_alias="satelliteId", validation_alias="satelliteId")
-    interval_start: datetime = Field(serialization_alias="intervalStart", validation_alias="intervalStart")
-    interval_end: datetime = Field(serialization_alias="intervalEnd", validation_alias="intervalEnd")
+    interval_start: datetime = Field(
+        serialization_alias="intervalStart", validation_alias="intervalStart"
+    )
+    interval_end: datetime = Field(
+        serialization_alias="intervalEnd", validation_alias="intervalEnd"
+    )
     size_class: str = Field(serialization_alias="sizeClass", validation_alias="sizeClass")
-    granularity: int = Field(default=0, serialization_alias="granularity", validation_alias="granularity")
-    size_dl_succ_nor: int = Field(default=0, serialization_alias="sizeDlSuccNor", validation_alias="sizeDlSuccNor")
-    size_ul_succ_nor: int = Field(default=0, serialization_alias="sizeUlSuccNor", validation_alias="sizeUlSuccNor")
-    size_dl_fail_nor: int = Field(default=0, serialization_alias="sizeDlFailNor", validation_alias="sizeDlFailNor")
-    size_ul_fail_nor: int = Field(default=0, serialization_alias="sizeUlFailNor", validation_alias="sizeUlFailNor")
-    size_dl_succ_rep: int = Field(default=0, serialization_alias="sizeDlSuccRep", validation_alias="sizeDlSuccRep")
-    size_ul_succ_rep: int = Field(default=0, serialization_alias="sizeUlSuccRep", validation_alias="sizeUlSuccRep")
-    size_dl_fail_rep: int = Field(default=0, serialization_alias="sizeDlFailRep", validation_alias="sizeDlFailRep")
-    size_ul_fail_rep: int = Field(default=0, serialization_alias="sizeUlFailRep", validation_alias="sizeUlFailRep")
-    count_dl_succ_nor: int = Field(default=0, serialization_alias="countDlSuccNor", validation_alias="countDlSuccNor")
-    count_ul_succ_nor: int = Field(default=0, serialization_alias="countUlSuccNor", validation_alias="countUlSuccNor")
-    count_dl_fail_nor: int = Field(default=0, serialization_alias="countDlFailNor", validation_alias="countDlFailNor")
-    count_ul_fail_nor: int = Field(default=0, serialization_alias="countUlFailNor", validation_alias="countUlFailNor")
-    count_dl_succ_rep: int = Field(default=0, serialization_alias="countDlSuccRep", validation_alias="countDlSuccRep")
-    count_ul_succ_rep: int = Field(default=0, serialization_alias="countUlSuccRep", validation_alias="countUlSuccRep")
-    count_dl_fail_rep: int = Field(default=0, serialization_alias="countDlFailRep", validation_alias="countDlFailRep")
-    count_ul_fail_rep: int = Field(default=0, serialization_alias="countUlFailRep", validation_alias="countUlFailRep")
+    granularity: int = Field(
+        default=0, serialization_alias="granularity", validation_alias="granularity"
+    )
+    size_dl_succ_nor: int = Field(
+        default=0, serialization_alias="sizeDlSuccNor", validation_alias="sizeDlSuccNor"
+    )
+    size_ul_succ_nor: int = Field(
+        default=0, serialization_alias="sizeUlSuccNor", validation_alias="sizeUlSuccNor"
+    )
+    size_dl_fail_nor: int = Field(
+        default=0, serialization_alias="sizeDlFailNor", validation_alias="sizeDlFailNor"
+    )
+    size_ul_fail_nor: int = Field(
+        default=0, serialization_alias="sizeUlFailNor", validation_alias="sizeUlFailNor"
+    )
+    size_dl_succ_rep: int = Field(
+        default=0, serialization_alias="sizeDlSuccRep", validation_alias="sizeDlSuccRep"
+    )
+    size_ul_succ_rep: int = Field(
+        default=0, serialization_alias="sizeUlSuccRep", validation_alias="sizeUlSuccRep"
+    )
+    size_dl_fail_rep: int = Field(
+        default=0, serialization_alias="sizeDlFailRep", validation_alias="sizeDlFailRep"
+    )
+    size_ul_fail_rep: int = Field(
+        default=0, serialization_alias="sizeUlFailRep", validation_alias="sizeUlFailRep"
+    )
+    count_dl_succ_nor: int = Field(
+        default=0, serialization_alias="countDlSuccNor", validation_alias="countDlSuccNor"
+    )
+    count_ul_succ_nor: int = Field(
+        default=0, serialization_alias="countUlSuccNor", validation_alias="countUlSuccNor"
+    )
+    count_dl_fail_nor: int = Field(
+        default=0, serialization_alias="countDlFailNor", validation_alias="countDlFailNor"
+    )
+    count_ul_fail_nor: int = Field(
+        default=0, serialization_alias="countUlFailNor", validation_alias="countUlFailNor"
+    )
+    count_dl_succ_rep: int = Field(
+        default=0, serialization_alias="countDlSuccRep", validation_alias="countDlSuccRep"
+    )
+    count_ul_succ_rep: int = Field(
+        default=0, serialization_alias="countUlSuccRep", validation_alias="countUlSuccRep"
+    )
+    count_dl_fail_rep: int = Field(
+        default=0, serialization_alias="countDlFailRep", validation_alias="countDlFailRep"
+    )
+    count_ul_fail_rep: int = Field(
+        default=0, serialization_alias="countUlFailRep", validation_alias="countUlFailRep"
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -246,11 +288,19 @@ class TransferGroupedRead(BaseModel):
 
 class TransferGroupedFilters(BaseModel):
     source: Optional[str] = None
-    satellite_id: Optional[str] = Field(default=None, serialization_alias="satelliteId", validation_alias="satelliteId")
-    size_class: Optional[str] = Field(default=None, serialization_alias="sizeClass", validation_alias="sizeClass")
+    satellite_id: Optional[str] = Field(
+        default=None, serialization_alias="satelliteId", validation_alias="satelliteId"
+    )
+    size_class: Optional[str] = Field(
+        default=None, serialization_alias="sizeClass", validation_alias="sizeClass"
+    )
     granularity: Optional[int] = Field(default=None)
-    interval_start_from: Optional[datetime] = Field(default=None, serialization_alias="intervalStartFrom", validation_alias="intervalStartFrom")
-    interval_start_to: Optional[datetime] = Field(default=None, serialization_alias="intervalStartTo", validation_alias="intervalStartTo")
+    interval_start_from: Optional[datetime] = Field(
+        default=None, serialization_alias="intervalStartFrom", validation_alias="intervalStartFrom"
+    )
+    interval_start_to: Optional[datetime] = Field(
+        default=None, serialization_alias="intervalStartTo", validation_alias="intervalStartTo"
+    )
     limit: int = Field(default=100, ge=1, le=1000)
 
     model_config = ConfigDict(populate_by_name=True)
@@ -259,15 +309,26 @@ class TransferGroupedFilters(BaseModel):
 class NodeConfig(BaseModel):
     name: str = Field(..., description="Node identifier configured in settings")
     path: str = Field(..., description="Absolute path to the node log file")
-    nodeapi: Optional[str] = Field(default=None, description="Optional HTTP(S) node API endpoint (nodeapi)")
+    nodeapi: Optional[str] = Field(
+        default=None, description="Optional HTTP(S) node API endpoint (nodeapi)"
+    )
     vetting: Optional[dict[str, Optional[datetime]]] = Field(
         default=None,
         description="Mapping of satellite ids to their vettedAt timestamp (if known)",
     )
 
 
+class NodeGroupRead(BaseModel):
+    name: str = Field(..., description="Configured nodegroup name")
+    nodes: list[str] = Field(default_factory=list, description="Node names in the configured group")
+    icon: str | None = Field(default=None, description="Optional MDI icon identifier")
+
+
 class DataDistributionRequest(BaseModel):
-    nodes: list[str] = Field(default_factory=list, description="Nodes to include in the distribution; empty means all nodes.")
+    nodes: list[str] = Field(
+        default_factory=list,
+        description="Nodes to include in the distribution; empty means all nodes.",
+    )
 
 
 class DataDistributionItem(BaseModel):
@@ -333,16 +394,34 @@ class IntervalTransferResponse(BaseModel):
 
 
 class IntervalTransfersRequest(BaseModel):
-    nodes: list[str] = Field(default_factory=list, description="Nodes to include in aggregation; empty means all nodes.")
-    interval_length: str = Field(default="1h", description="Interval length string, e.g. '10s','2m','10m','1h'.", validation_alias="intervalLength", serialization_alias="intervalLength")
-    number_of_intervals: int = Field(default=6, ge=1, le=1000, description="Number of intervals to include backwards from now", validation_alias="numberOfIntervals", serialization_alias="numberOfIntervals")
+    nodes: list[str] = Field(
+        default_factory=list, description="Nodes to include in aggregation; empty means all nodes."
+    )
+    interval_length: str = Field(
+        default="1h",
+        description="Interval length string, e.g. '10s','2m','10m','1h'.",
+        validation_alias="intervalLength",
+        serialization_alias="intervalLength",
+    )
+    number_of_intervals: int = Field(
+        default=6,
+        ge=1,
+        le=1000,
+        description="Number of intervals to include backwards from now",
+        validation_alias="numberOfIntervals",
+        serialization_alias="numberOfIntervals",
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
 
 class TransferTotalsRequest(BaseModel):
-    nodes: list[str] = Field(default_factory=list, description="Nodes to include in totals; empty means all nodes.")
-    interval: str = Field(default="1h", description="Interval length string like '30d', '16h', '30m'.")
+    nodes: list[str] = Field(
+        default_factory=list, description="Nodes to include in totals; empty means all nodes."
+    )
+    interval: str = Field(
+        default="1h", description="Interval length string like '30d', '16h', '30m'."
+    )
 
 
 class TransferTotalsNode(BaseModel):
@@ -374,16 +453,22 @@ class TransferTotalsResponse(BaseModel):
 
 
 class OverallStatusRequest(BaseModel):
-    nodes: list[str] = Field(default_factory=list, description="Nodes to include; empty means all nodes")
+    nodes: list[str] = Field(
+        default_factory=list, description="Nodes to include; empty means all nodes"
+    )
 
 
 class PayoutCurrentRequest(BaseModel):
-    nodes: list[str] = Field(default_factory=list, description="Nodes to include; empty means all nodes")
+    nodes: list[str] = Field(
+        default_factory=list, description="Nodes to include; empty means all nodes"
+    )
 
 
 class PayoutNode(BaseModel):
     joined_at: Optional[datetime] = Field(default=None, serialization_alias="joinedAt")
-    last_estimated_payout_at: Optional[datetime] = Field(default=None, serialization_alias="lastEstimatedPayoutAt")
+    last_estimated_payout_at: Optional[datetime] = Field(
+        default=None, serialization_alias="lastEstimatedPayoutAt"
+    )
     estimated_payout: Optional[float] = Field(default=None, serialization_alias="estimatedPayout")
     held_back_payout: Optional[float] = Field(default=None, serialization_alias="heldBackPayout")
     total_held_payout: Optional[float] = Field(default=None, serialization_alias="totalHeldPayout")
@@ -401,7 +486,9 @@ class PayoutCurrentResponse(BaseModel):
 
 
 class PayoutPaystubsRequest(BaseModel):
-    nodes: list[str] = Field(default_factory=list, description="Nodes to include; empty means all nodes")
+    nodes: list[str] = Field(
+        default_factory=list, description="Nodes to include; empty means all nodes"
+    )
 
 
 class DisqualEntry(BaseModel):
@@ -454,16 +541,30 @@ class NodeOverallMetrics(BaseModel):
 
     # current month payout information gathered from nodeapi (optional)
     class CurrentMonthPayout(BaseModel):
-        estimated_payout: Optional[float] = Field(default=None, serialization_alias="estimatedPayout", validation_alias="estimatedPayout")
-        held_back_payout: Optional[float] = Field(default=None, serialization_alias="heldBackPayout", validation_alias="heldBackPayout")
-        download_payout: Optional[float] = Field(default=None, serialization_alias="downloadPayout", validation_alias="downloadPayout")
-        repair_payout: Optional[float] = Field(default=None, serialization_alias="repairPayout", validation_alias="repairPayout")
-        disk_payout: Optional[float] = Field(default=None, serialization_alias="diskPayout", validation_alias="diskPayout")
-        total_held_payout: Optional[float] = Field(default=None, serialization_alias="totalHeldPayout", validation_alias="totalHeldPayout")
+        estimated_payout: Optional[float] = Field(
+            default=None, serialization_alias="estimatedPayout", validation_alias="estimatedPayout"
+        )
+        held_back_payout: Optional[float] = Field(
+            default=None, serialization_alias="heldBackPayout", validation_alias="heldBackPayout"
+        )
+        download_payout: Optional[float] = Field(
+            default=None, serialization_alias="downloadPayout", validation_alias="downloadPayout"
+        )
+        repair_payout: Optional[float] = Field(
+            default=None, serialization_alias="repairPayout", validation_alias="repairPayout"
+        )
+        disk_payout: Optional[float] = Field(
+            default=None, serialization_alias="diskPayout", validation_alias="diskPayout"
+        )
+        total_held_payout: Optional[float] = Field(
+            default=None, serialization_alias="totalHeldPayout", validation_alias="totalHeldPayout"
+        )
 
         model_config = ConfigDict(populate_by_name=True)
 
-    current_month_payout: CurrentMonthPayout = Field(default_factory=CurrentMonthPayout, serialization_alias="currentMonthPayout")
+    current_month_payout: CurrentMonthPayout = Field(
+        default_factory=CurrentMonthPayout, serialization_alias="currentMonthPayout"
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -475,7 +576,9 @@ class OverallStatusResponse(BaseModel):
 
 class HeldAmountFilters(BaseModel):
     source: Optional[str] = Field(default=None, description="Filter by node/source name")
-    satellite_id: Optional[str] = Field(default=None, serialization_alias="satelliteId", validation_alias="satelliteId")
+    satellite_id: Optional[str] = Field(
+        default=None, serialization_alias="satelliteId", validation_alias="satelliteId"
+    )
     limit: int = Field(default=100, ge=1, le=1000)
 
 
@@ -490,7 +593,9 @@ class HeldAmountRead(BaseModel):
 
 class PaystubFilters(BaseModel):
     source: Optional[str] = Field(default=None, description="Filter by node/source name")
-    satellite_id: Optional[str] = Field(default=None, serialization_alias="satelliteId", validation_alias="satelliteId")
+    satellite_id: Optional[str] = Field(
+        default=None, serialization_alias="satelliteId", validation_alias="satelliteId"
+    )
     period: Optional[str] = Field(default=None, description="Filter by billing period identifier")
     limit: int = Field(default=100, ge=1, le=1000)
 
@@ -623,7 +728,9 @@ class SatelliteUsageFilters(BaseModel):
         serialization_alias="satelliteId",
     )
     period: Optional[str] = Field(default=None, description="Filter by period identifier")
-    limit: int = Field(default=100, ge=1, le=1000, description="Maximum number of records to return")
+    limit: int = Field(
+        default=100, ge=1, le=1000, description="Maximum number of records to return"
+    )
 
 
 class SatelliteUsageRead(BaseModel):
@@ -853,26 +960,40 @@ class DashStorjBandwidth(BaseModel):
 class DashStorjNodeStatus(BaseModel):
     node_id: str = Field(serialization_alias="nodeID", validation_alias="nodeID")
     wallet: str
-    wallet_features: Optional[list[str]] = Field(default=None, serialization_alias="walletFeatures", validation_alias="walletFeatures")
+    wallet_features: Optional[list[str]] = Field(
+        default=None, serialization_alias="walletFeatures", validation_alias="walletFeatures"
+    )
     satellites: list[DashStorjSatellite] = Field(default_factory=list)
-    disk_space: DashStorjDiskSpace = Field(serialization_alias="diskSpace", validation_alias="diskSpace")
+    disk_space: DashStorjDiskSpace = Field(
+        serialization_alias="diskSpace", validation_alias="diskSpace"
+    )
     bandwidth: DashStorjBandwidth
     last_pinged: datetime = Field(serialization_alias="lastPinged", validation_alias="lastPinged")
     version: str
-    allowed_version: str = Field(serialization_alias="allowedVersion", validation_alias="allowedVersion")
+    allowed_version: str = Field(
+        serialization_alias="allowedVersion", validation_alias="allowedVersion"
+    )
     up_to_date: bool = Field(serialization_alias="upToDate", validation_alias="upToDate")
     started_at: datetime = Field(serialization_alias="startedAt", validation_alias="startedAt")
-    configured_port: str = Field(serialization_alias="configuredPort", validation_alias="configuredPort")
+    configured_port: str = Field(
+        serialization_alias="configuredPort", validation_alias="configuredPort"
+    )
     quic_status: str = Field(serialization_alias="quicStatus", validation_alias="quicStatus")
-    last_quic_pinged_at: datetime = Field(serialization_alias="lastQuicPingedAt", validation_alias="lastQuicPingedAt")
+    last_quic_pinged_at: datetime = Field(
+        serialization_alias="lastQuicPingedAt", validation_alias="lastQuicPingedAt"
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
 
 class DashStorjStorageDailyEntry(BaseModel):
     at_rest_total: float = Field(serialization_alias="atRestTotal", validation_alias="atRestTotal")
-    at_rest_total_bytes: float = Field(serialization_alias="atRestTotalBytes", validation_alias="atRestTotalBytes")
-    interval_start: datetime = Field(serialization_alias="intervalStart", validation_alias="intervalStart")
+    at_rest_total_bytes: float = Field(
+        serialization_alias="atRestTotalBytes", validation_alias="atRestTotalBytes"
+    )
+    interval_start: datetime = Field(
+        serialization_alias="intervalStart", validation_alias="intervalStart"
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -892,36 +1013,64 @@ class DashStorjBandwidthDailyEntry(BaseModel):
     egress: DashStorjBandwidthDailyEgress
     ingress: DashStorjBandwidthDailyIngress
     delete: float
-    interval_start: datetime = Field(serialization_alias="intervalStart", validation_alias="intervalStart")
+    interval_start: datetime = Field(
+        serialization_alias="intervalStart", validation_alias="intervalStart"
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
+
 class DashStorjAuditEntry(BaseModel):
     audit_score: float = Field(serialization_alias="auditScore", validation_alias="auditScore")
-    suspension_score: float = Field(serialization_alias="suspensionScore", validation_alias="suspensionScore")
+    suspension_score: float = Field(
+        serialization_alias="suspensionScore", validation_alias="suspensionScore"
+    )
     online_score: float = Field(serialization_alias="onlineScore", validation_alias="onlineScore")
-    satellite_name: str = Field(serialization_alias="satelliteName", validation_alias="satelliteName")
+    satellite_name: str = Field(
+        serialization_alias="satelliteName", validation_alias="satelliteName"
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
 
 class DashStorjNodeStatistics(BaseModel):
-    storage_daily: list[DashStorjStorageDailyEntry] = Field(default_factory=list, serialization_alias="storageDaily", validation_alias="storageDaily")
-    bandwidth_daily: list[DashStorjBandwidthDailyEntry] = Field(default_factory=list, serialization_alias="bandwidthDaily", validation_alias="bandwidthDaily")
-    storage_summary: float = Field(serialization_alias="storageSummary", validation_alias="storageSummary")
-    average_usage_bytes: float = Field(serialization_alias="averageUsageBytes", validation_alias="averageUsageBytes")
-    bandwidth_summary: float = Field(serialization_alias="bandwidthSummary", validation_alias="bandwidthSummary")
-    egress_summary: float = Field(serialization_alias="egressSummary", validation_alias="egressSummary")
-    ingress_summary: float = Field(serialization_alias="ingressSummary", validation_alias="ingressSummary")
-    earliest_joined_at: datetime = Field(serialization_alias="earliestJoinedAt", validation_alias="earliestJoinedAt")
+    storage_daily: list[DashStorjStorageDailyEntry] = Field(
+        default_factory=list, serialization_alias="storageDaily", validation_alias="storageDaily"
+    )
+    bandwidth_daily: list[DashStorjBandwidthDailyEntry] = Field(
+        default_factory=list,
+        serialization_alias="bandwidthDaily",
+        validation_alias="bandwidthDaily",
+    )
+    storage_summary: float = Field(
+        serialization_alias="storageSummary", validation_alias="storageSummary"
+    )
+    average_usage_bytes: float = Field(
+        serialization_alias="averageUsageBytes", validation_alias="averageUsageBytes"
+    )
+    bandwidth_summary: float = Field(
+        serialization_alias="bandwidthSummary", validation_alias="bandwidthSummary"
+    )
+    egress_summary: float = Field(
+        serialization_alias="egressSummary", validation_alias="egressSummary"
+    )
+    ingress_summary: float = Field(
+        serialization_alias="ingressSummary", validation_alias="ingressSummary"
+    )
+    earliest_joined_at: datetime = Field(
+        serialization_alias="earliestJoinedAt", validation_alias="earliestJoinedAt"
+    )
     audits: list[DashStorjAuditEntry] = Field(default_factory=list)
 
     model_config = ConfigDict(populate_by_name=True)
 
+
 # IP24 status schema
 class IP24StatusEntry(BaseModel):
     valid: bool
-    expected_instances: int = Field(serialization_alias="expectedInstances", validation_alias="expectedInstances")
+    expected_instances: int = Field(
+        serialization_alias="expectedInstances", validation_alias="expectedInstances"
+    )
     instances: Optional[int] = None
 
     model_config = ConfigDict(populate_by_name=True)

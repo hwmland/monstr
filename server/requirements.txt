@@ -3,6 +3,7 @@ uvicorn[standard]==0.30.1
 sqlmodel==0.0.21
 sqlalchemy==2.0.32
 pydantic-settings==2.4.0
+json5==0.15.0
 aiofiles==24.1.0
 aiosqlite==0.20.0
 httpx==0.27.2
