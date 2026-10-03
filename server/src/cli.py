@@ -14,8 +14,8 @@ from uvicorn.config import LOGGING_CONFIG
 from server.src.core.logging import get_logger
 
 from .config import Settings
+from .config_loader import ConfigError, load_settings
 from .core.app import create_app
-
 
 logger = get_logger(__name__)
 
@@ -50,6 +50,15 @@ def _apply_logger_override(log_config: dict, raw: str) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Monstr log monitoring service")
+    config_group = parser.add_mutually_exclusive_group()
+    config_group.add_argument(
+        "--config-file",
+        help="Load backend settings from a JSONC file",
+    )
+    config_group.add_argument(
+        "--config-json",
+        help="Load backend settings from an inline JSONC value",
+    )
     parser.add_argument(
         "--source",
         dest="sources",
@@ -87,7 +96,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--host", dest="host", help="API host binding override")
     parser.add_argument("--port", dest="port", type=int, help="API port binding override")
     parser.add_argument(
-        "--log-level", dest="log_level", help="Override the API log level (info, debug, ...)",
+        "--log-level",
+        dest="log_level",
+        help="Override the API log level (info, debug, ...)",
     )
     parser.add_argument(
         "--log",
@@ -100,7 +111,6 @@ def parse_args() -> argparse.Namespace:
 
 
 def build_settings(args: argparse.Namespace) -> Settings:
-    base = Settings()
     overrides: Dict[str, Any] = {}
 
     if getattr(args, "sources", None):
@@ -117,14 +127,19 @@ def build_settings(args: argparse.Namespace) -> Settings:
         overrides["api_log_level"] = args.log_level
     # days_offset removed; nothing to override
 
-    if overrides:
-        return base.model_copy(update=overrides)
-    return base
+    return load_settings(
+        config_file=getattr(args, "config_file", None),
+        config_json=getattr(args, "config_json", None),
+        overrides=overrides,
+    )
 
 
 def main() -> None:
     args = parse_args()
-    settings = build_settings(args)
+    try:
+        settings = build_settings(args)
+    except ConfigError as exc:
+        raise SystemExit(f"Configuration error: {exc}") from None
 
     log_config = deepcopy(LOGGING_CONFIG)
     desired_level = settings.api_log_level.upper()
@@ -205,8 +220,11 @@ def main() -> None:
         for raw in [p.strip() for p in env_overrides.split(",") if p.strip()]:
             _apply_logger_override(log_config, raw)
 
+    for logger_name, level in settings.logging_overrides.items():
+        _apply_logger_override(log_config, f"{logger_name}:{level}")
+
     # CLI overrides (args.log_overrides) take precedence
-    for pair in (args.log_overrides or []):
+    for pair in args.log_overrides or []:
         _apply_logger_override(log_config, pair)
 
     logging.config.dictConfig(log_config)

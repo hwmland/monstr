@@ -2,44 +2,45 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from server.src.core.logging import get_logger
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-import time
-
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
+from server.src.core.logging import get_logger
+
 from ..api.routes import (
+    access_logs,
+    dash,
+    diskusage,
+    hashstore,
     health,
+    held_amounts,
+    ip24,
+    loggers,
     logs,
     nodes,
+    overall_status,
+    payout,
+    paystubs,
     reputations,
+    satelliteusage,
     transfer_grouped,
     transfers,
-    overall_status,
-    loggers,
-    payout,
-    held_amounts,
-    paystubs,
-    diskusage,
-    satelliteusage,
-    access_logs,
-    ip24,
-    dash,
-    hashstore,
 )
 from ..config import Settings
+from ..config_loader import apply_configured_logger_overrides, load_settings
 from ..database import configure_database, init_database
 from ..services.cleanup import CleanupService
+from ..services.ip24 import IP24Service
 from ..services.log_monitor import LogMonitorService
 from ..services.node_api import NodeApiService
 from ..services.transfer_grouping import TransferGroupingService
-from ..services.ip24 import IP24Service
 
 logger = get_logger(__name__)
 
@@ -56,7 +57,9 @@ class SPAStaticFiles(StaticFiles):
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Construct the FastAPI application with configured lifespan hooks."""
-    settings = settings or Settings()
+    if settings is None:
+        settings = load_settings()
+        apply_configured_logger_overrides(settings)
     configure_database(settings)
 
     @asynccontextmanager
@@ -121,7 +124,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     try:
                         client = request.client
                         if client:
-                            client_addr = client[0] if isinstance(client, (list, tuple)) else getattr(client, "host", str(client))
+                            client_addr = (
+                                client[0]
+                                if isinstance(client, (list, tuple))
+                                else getattr(client, "host", str(client))
+                            )
                     except Exception:
                         client_addr = "-"
 
@@ -180,6 +187,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         index_file = frontend_path / "index.html"
 
         if index_file.exists():
+
             @app.get("/dash", include_in_schema=False)
             @app.get("/dash/{rest_of_path:path}", include_in_schema=False)
             async def serve_dash_spa(rest_of_path: str | None = None):

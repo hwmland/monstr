@@ -1,9 +1,12 @@
+from __future__ import annotations
+
+import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple, Literal
-import json
+from typing import Dict, List, Literal, Optional, Tuple
 
-from pydantic import field_validator
+from pydantic import Field, PrivateAttr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,6 +40,36 @@ class DisqualDefinition:
     period: str
 
 
+@dataclass(frozen=True)
+class NodeDisqualification:
+    satellite_id: Optional[str]
+    period: str
+
+
+@dataclass(frozen=True)
+class NodeDefinition:
+    name: str
+    kind: Literal["file", "tcp"]
+    path: Optional[str] = None
+    host: Optional[str] = None
+    port: Optional[int] = None
+    nodeapi: Optional[str] = None
+    disqualifications: Tuple[NodeDisqualification, ...] = ()
+
+
+@dataclass(frozen=True)
+class NodeLocationDefinition:
+    alias: str
+    ip: str
+    nodes: Tuple[NodeDefinition, ...]
+
+
+@dataclass(frozen=True)
+class NodeGroupDefinition:
+    name: str
+    locations: Tuple[NodeLocationDefinition, ...]
+
+
 class Settings(BaseSettings):
     """Application configuration sourced from environment variables or overrides."""
 
@@ -65,6 +98,7 @@ class Settings(BaseSettings):
     # yyyy-mm.  Example: "Node1::2025-06" or "Node1:1wFTAgs...@:2025-06".
     # Accepts comma/newline separated strings, JSON arrays, or a Python list.
     disqual: str | List[str] = []
+    nodegroups: List[NodeGroupDefinition] = Field(default_factory=list)
     log_batch_size: int = 32
     nodeapi_poll_interval_seconds: int = 60
     # Interval (seconds) after which the estimated-payout endpoint should be
@@ -91,11 +125,18 @@ class Settings(BaseSettings):
     # Per-table retention overrides (in minutes)
     retention_transfers_minutes: int = 1440  # 1 day in minutes
     retention_log_entries_minutes: int = 1440 * 7 * 4  # 4 weeks in minutes
-    retention_transfer_grouped_minutes: int = -1 # unlimited retention
+    retention_transfer_grouped_minutes: int = -1  # unlimited retention
     retention_hashstore_compaction_minutes: int = 1440 * 365 * 5  # 5 years in minutes
     frontend_dist_dir: Optional[str] = "../client/dist"
     unprocessed_log_dir: str = "../data/"
     cors_allow_origins: List[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    logging_overrides: Dict[str, str] = Field(default_factory=dict)
+    config_file: Optional[str] = Field(default=None, exclude=True, repr=False)
+    config_json: Optional[str] = Field(default=None, exclude=True, repr=False)
+
+    _nodegroups_sources_active: bool = PrivateAttr(default=False)
+    _nodegroups_ip24_active: bool = PrivateAttr(default=False)
+    _nodegroups_disqual_active: bool = PrivateAttr(default=False)
 
     model_config = SettingsConfigDict(
         env_prefix="MONSTR_",
@@ -215,7 +256,29 @@ class Settings(BaseSettings):
 
     @property
     def parsed_sources(self) -> List[SourceDefinition]:
-        """Return structured source definitions parsed from `sources`."""
+        """Return structured source definitions from nodegroups or legacy declarations."""
+        if self._nodegroups_sources_active:
+            parsed: List[SourceDefinition] = []
+            for group in self.nodegroups:
+                for location in group.locations:
+                    for node in location.nodes:
+                        path = (
+                            Path(node.path).expanduser().resolve()
+                            if node.kind == "file" and node.path is not None
+                            else None
+                        )
+                        parsed.append(
+                            SourceDefinition(
+                                name=node.name,
+                                kind=node.kind,
+                                path=path,
+                                host=node.host,
+                                port=node.port,
+                                nodeapi=node.nodeapi,
+                            )
+                        )
+            return parsed
+
         parsed: List[SourceDefinition] = []
         for raw in self.sources or []:
             if not raw:
@@ -239,7 +302,9 @@ class Settings(BaseSettings):
 
             if self._looks_like_host_port(spec):
                 host, port = self._parse_host_port(spec)
-                parsed.append(SourceDefinition(name=name, kind="tcp", host=host, port=port, nodeapi=nodeapi))
+                parsed.append(
+                    SourceDefinition(name=name, kind="tcp", host=host, port=port, nodeapi=nodeapi)
+                )
             else:
                 path = Path(spec).expanduser().resolve()
                 parsed.append(SourceDefinition(name=name, kind="file", path=path, nodeapi=nodeapi))
@@ -247,7 +312,18 @@ class Settings(BaseSettings):
 
     @property
     def parsed_ip24(self) -> List[IP24Definition]:
-        """Return structured IP24 definitions parsed from `ip24` entries."""
+        """Return location-derived IP24 definitions or legacy `ip24` entries."""
+        if self._nodegroups_ip24_active:
+            return [
+                IP24Definition(
+                    alias=location.alias,
+                    ip=location.ip,
+                    expected_instances=len(location.nodes),
+                )
+                for group in self.nodegroups
+                for location in group.locations
+            ]
+
         parsed: List[IP24Definition] = []
         for raw in self.ip24 or []:
             entry = str(raw).strip()
@@ -285,13 +361,23 @@ class Settings(BaseSettings):
 
     @property
     def parsed_disqual(self) -> List[DisqualDefinition]:
-        """Return structured disqualification definitions parsed from ``disqual``.
+        """Return nodegroup-derived disqualifications or legacy ``disqual`` declarations.
 
-        Each raw entry has the form ``SOURCE:SATELLITE_ID:PERIOD`` where
-        ``SATELLITE_ID`` may be empty (meaning *all* satellites for that
-        source) and ``PERIOD`` is ``yyyy-mm``.
+        Legacy entries have the form ``SOURCE:SATELLITE_ID:PERIOD`` where an
+        empty ``SATELLITE_ID`` means all satellites and ``PERIOD`` is ``yyyy-mm``.
         """
-        import re
+        if self._nodegroups_disqual_active:
+            return [
+                DisqualDefinition(
+                    source=node.name,
+                    satellite_id=disqualification.satellite_id or "",
+                    period=disqualification.period,
+                )
+                for group in self.nodegroups
+                for location in group.locations
+                for node in location.nodes
+                for disqualification in node.disqualifications
+            ]
 
         period_re = re.compile(r"^\d{4}-\d{2}$")
         parsed: List[DisqualDefinition] = []
