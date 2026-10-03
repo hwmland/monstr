@@ -1,4 +1,4 @@
-import { create } from "zustand";
+import { create } from 'zustand';
 
 interface ToggleModifiers {
   shift?: boolean;
@@ -8,18 +8,32 @@ interface ToggleModifiers {
 interface SelectedNodesState {
   selected: string[];
   toggleNode: (name: string, availableNodeNames: string[], modifiers?: ToggleModifiers) => void;
+  selectNodes: (names: string[], availableNodeNames: string[]) => void;
   isSelected: (name: string) => boolean;
 }
 
 const useSelectedNodesStore = create<SelectedNodesState>((set, get) => ({
-  selected: ["All"],
+  selected: ['All'],
   isSelected: (name: string) => get().selected.includes(name),
+  selectNodes: (names: string[], availableNodeNames: string[]) => {
+    const available = new Set(availableNodeNames);
+    const next = [...new Set(names.filter((name) => name !== 'All' && available.has(name)))];
+    if (
+      names.includes('All') ||
+      next.length === 0 ||
+      (available.size > 0 && next.length === available.size)
+    ) {
+      set({ selected: ['All'] });
+    } else {
+      set({ selected: next });
+    }
+  },
   toggleNode: (name: string, availableNodeNames: string[], modifiers?: ToggleModifiers) => {
     let next = [...get().selected];
 
-    if (name === "All") {
+    if (name === 'All') {
       // "All" always means "select everything" regardless of modifiers
-      next = ["All"];
+      next = ['All'];
     } else if (modifiers?.shift) {
       // Shift+Click: select only this node
       next = [name];
@@ -27,10 +41,10 @@ const useSelectedNodesStore = create<SelectedNodesState>((set, get) => ({
       // Ctrl+Click: select all nodes except this one
       next = availableNodeNames.filter((n) => n !== name);
       if (next.length === 0 || next.length === availableNodeNames.length) {
-        next = ["All"];
+        next = ['All'];
       }
     } else {
-      if (next.includes("All")) {
+      if (next.includes('All')) {
         next = [];
       }
 
@@ -41,9 +55,9 @@ const useSelectedNodesStore = create<SelectedNodesState>((set, get) => ({
       }
 
       if (next.length === 0) {
-        next = ["All"];
+        next = ['All'];
       } else if (next.length === availableNodeNames.length) {
-        next = ["All"];
+        next = ['All'];
       }
     }
 

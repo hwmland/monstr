@@ -1,5 +1,6 @@
 import type { FC, ReactNode } from "react";
 import { useEffect, useState } from "react";
+import useSelectedNodeGroupName from "../hooks/useSelectedNodeGroupName";
 import { formatWindowTime, use24hTime } from "../utils/time";
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
 }
 
 const PanelSubtitle: FC<Props> = ({ windowStart, windowEnd, selectedNodes, children }) => {
+  const selectedNodeGroupName = useSelectedNodeGroupName(selectedNodes);
   const [prefer24h, setPrefer24h] = useState<boolean | null>(() => {
     try {
       const v = localStorage.getItem('pref_time_24h');
@@ -63,7 +65,14 @@ const PanelSubtitle: FC<Props> = ({ windowStart, windowEnd, selectedNodes, child
     parts.push(`Window: ${fmt(windowStart)} – ${fmt(windowEnd)}`);
   }
   // compute nodes label if the caller provided selected nodes
-  const nodesLabel = selectedNodes === undefined ? undefined : (selectedNodes.length === 0 || selectedNodes.includes("All") ? "All nodes" : `Nodes: ${selectedNodes.join(", ")}`);
+  const nodesLabel =
+    selectedNodes === undefined
+      ? undefined
+      : selectedNodes.length === 0 || selectedNodes.includes("All")
+        ? "All nodes"
+        : selectedNodeGroupName
+          ? `${selectedNodeGroupName} nodes`
+          : `Nodes: ${selectedNodes.join(", ")}`;
   if (nodesLabel) parts.push(nodesLabel);
 
   return (

@@ -1,7 +1,8 @@
-import axios from "axios";
+import axios from 'axios';
 
-import { translateSatelliteId } from "../constants/satellites";
+import { translateSatelliteId } from '../constants/satellites';
 import type {
+  NodeGroupInfo,
   NodeInfo,
   NodeReputation,
   DisqualEntry,
@@ -25,40 +26,40 @@ import type {
   HashstoreSeriesResponse,
   ActiveCompaction,
   ActiveCompactionsResponse,
-} from "../types";
+} from '../types';
 
-const DEFAULT_API_BASE_URL = import.meta.env.DEV ? "http://localhost:8000/api" : "/api";
+const DEFAULT_API_BASE_URL = import.meta.env.DEV ? 'http://localhost:8000/api' : '/api';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL;
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10_000
+  timeout: 10_000,
 });
 
 export const fetchNodes = async (): Promise<NodeInfo[]> => {
-  const response = await apiClient.get("/nodes");
+  const response = await apiClient.get('/nodes');
   const { data } = response;
   const items = Array.isArray(data)
     ? data
-    : data && typeof data === "object" && Array.isArray((data as Record<string, unknown>).nodes)
-    ? (data as { nodes: unknown[] }).nodes
-    : undefined;
+    : data && typeof data === 'object' && Array.isArray((data as Record<string, unknown>).nodes)
+      ? (data as { nodes: unknown[] }).nodes
+      : undefined;
 
   if (!Array.isArray(items)) {
-    throw new Error("Unexpected nodes response format");
+    throw new Error('Unexpected nodes response format');
   }
 
   return items.map((item: Record<string, unknown>) => {
-    const name = String(item.name ?? "");
-    const path = String(item.path ?? "");
+    const name = String(item.name ?? '');
+    const path = String(item.path ?? '');
     const rawNodeapi = item.nodeapi;
-    const nodeapiValue = typeof rawNodeapi === "string" && rawNodeapi.trim().length > 0
-      ? rawNodeapi
-      : undefined;
+    const nodeapiValue =
+      typeof rawNodeapi === 'string' && rawNodeapi.trim().length > 0 ? rawNodeapi : undefined;
 
-    const vettingSource = (item as Record<string, unknown>).vetting ?? (item as Record<string, unknown>).vetting_date;
+    const vettingSource =
+      (item as Record<string, unknown>).vetting ?? (item as Record<string, unknown>).vetting_date;
     let vetting: Record<string, string | null> | undefined;
-    if (vettingSource && typeof vettingSource === "object" && !Array.isArray(vettingSource)) {
+    if (vettingSource && typeof vettingSource === 'object' && !Array.isArray(vettingSource)) {
       const normalized: Record<string, string | null> = {};
       for (const [satelliteId, value] of Object.entries(vettingSource as Record<string, unknown>)) {
         if (!satelliteId) {
@@ -80,12 +81,53 @@ export const fetchNodes = async (): Promise<NodeInfo[]> => {
   });
 };
 
+const MDI_ICON_ID_PATTERN = /^mdi:[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+export const fetchNodeGroups = async (): Promise<NodeGroupInfo[]> => {
+  const response = await apiClient.get('/nodegroups');
+  const data: unknown = response.data;
+  if (!Array.isArray(data)) {
+    throw new Error('Unexpected nodegroups response format');
+  }
+
+  return data.map((item: unknown) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error('Unexpected nodegroup entry format');
+    }
+
+    const record = item as Record<string, unknown>;
+    if (typeof record.name !== 'string' || !Array.isArray(record.nodes)) {
+      throw new Error('Unexpected nodegroup entry format');
+    }
+    const iconValue = record.icon;
+    if (
+      iconValue !== undefined &&
+      iconValue !== null &&
+      (typeof iconValue !== 'string' || !MDI_ICON_ID_PATTERN.test(iconValue))
+    ) {
+      throw new Error('Unexpected nodegroup icon format');
+    }
+
+    const nodes = record.nodes.map((node: unknown) => {
+      if (typeof node !== 'string') {
+        throw new Error('Unexpected nodegroup node format');
+      }
+      return node;
+    });
+    return {
+      name: record.name,
+      nodes,
+      ...(typeof iconValue === 'string' ? { icon: iconValue } : {}),
+    } satisfies NodeGroupInfo;
+  });
+};
+
 export const fetchReputationsPanel = async (nodes: string[]): Promise<NodeReputation[]> => {
-  const response = await apiClient.post("/reputations/panel", { nodes });
+  const response = await apiClient.post('/reputations/panel', { nodes });
   const { data } = response;
 
   if (!Array.isArray(data)) {
-    throw new Error("Unexpected reputations response format");
+    throw new Error('Unexpected reputations response format');
   }
 
   const toNumber = (value: unknown) => {
@@ -94,18 +136,18 @@ export const fetchReputationsPanel = async (nodes: string[]): Promise<NodeReputa
   };
 
   const toSatellite = (sat: unknown): SatelliteReputation | null => {
-    if (!sat || typeof sat !== "object") {
+    if (!sat || typeof sat !== 'object') {
       return null;
     }
 
     const record = sat as Record<string, unknown>;
 
-    const satelliteId = String(record.satellite_id ?? "");
+    const satelliteId = String(record.satellite_id ?? '');
 
     return {
       satelliteId,
       satelliteName: translateSatelliteId(satelliteId),
-      timestamp: String(record.timestamp ?? ""),
+      timestamp: String(record.timestamp ?? ''),
       auditsTotal: toNumber(record.audits_total),
       auditsSuccess: toNumber(record.audits_success),
       scoreAudit: toNumber(record.score_audit),
@@ -123,7 +165,7 @@ export const fetchReputationsPanel = async (nodes: string[]): Promise<NodeReputa
       : [];
 
     return {
-      node: String(nodeRecord.node ?? ""),
+      node: String(nodeRecord.node ?? ''),
       satellites,
     } satisfies NodeReputation;
   });
@@ -135,7 +177,7 @@ const toNumeric = (value: unknown): number => {
 };
 
 const extractMetrics = (value: unknown): TransferActualMetrics => {
-  if (!value || typeof value !== "object") {
+  if (!value || typeof value !== 'object') {
     return { operationsTotal: 0, operationsSuccess: 0, dataBytes: 0, rate: 0 };
   }
 
@@ -149,7 +191,7 @@ const extractMetrics = (value: unknown): TransferActualMetrics => {
 };
 
 const extractCategoryMetrics = (category: unknown): TransferActualCategoryMetrics => {
-  if (!category || typeof category !== "object") {
+  if (!category || typeof category !== 'object') {
     return { normal: extractMetrics(null), repair: extractMetrics(null) };
   }
 
@@ -161,12 +203,12 @@ const extractCategoryMetrics = (category: unknown): TransferActualCategoryMetric
 };
 
 const extractSatelliteMetrics = (item: unknown): TransferActualSatelliteMetrics | null => {
-  if (!item || typeof item !== "object") {
+  if (!item || typeof item !== 'object') {
     return null;
   }
 
   const record = item as Record<string, unknown>;
-  const satelliteId = String(record.satelliteId ?? record.satellite_id ?? "");
+  const satelliteId = String(record.satelliteId ?? record.satellite_id ?? '');
 
   return {
     satelliteId,
@@ -176,20 +218,18 @@ const extractSatelliteMetrics = (item: unknown): TransferActualSatelliteMetrics 
   };
 };
 
-export const fetchActualPerformance = async (
-  nodes: string[],
-): Promise<TransferActualData> => {
-  const response = await apiClient.post("/transfers/actual", { nodes });
+export const fetchActualPerformance = async (nodes: string[]): Promise<TransferActualData> => {
+  const response = await apiClient.post('/transfers/actual', { nodes });
   const { data } = response;
 
-  if (!data || typeof data !== "object") {
-    throw new Error("Unexpected actual performance response format");
+  if (!data || typeof data !== 'object') {
+    throw new Error('Unexpected actual performance response format');
   }
 
   const record = data as Record<string, unknown>;
 
-  const startTime = String(record.startTime ?? record.start_time ?? "");
-  const endTime = String(record.endTime ?? record.end_time ?? "");
+  const startTime = String(record.startTime ?? record.start_time ?? '');
+  const endTime = String(record.endTime ?? record.end_time ?? '');
   const satellitesRaw = Array.isArray(record.satellites) ? record.satellites : [];
   const satellites = satellitesRaw
     .map(extractSatelliteMetrics)
@@ -205,17 +245,17 @@ export const fetchActualPerformance = async (
 };
 
 export const fetchDataDistribution = async (nodes: string[]) => {
-  const response = await apiClient.post("/transfer-grouped/data-distribution", { nodes });
+  const response = await apiClient.post('/transfer-grouped/data-distribution', { nodes });
   return response.data;
 };
 
 export const fetchPayoutCurrent = async (nodes: string[]) => {
-  const response = await apiClient.post("/payout/current", { nodes });
+  const response = await apiClient.post('/payout/current', { nodes });
   return response.data;
 };
 
 export const fetchPayoutPaystubs = async (nodes: string[]): Promise<PaystubPeriodsResponse> => {
-  const response = await apiClient.post("/payout/paystubs", { nodes });
+  const response = await apiClient.post('/payout/paystubs', { nodes });
   const raw = response.data;
 
   const ensureNumber = (value: unknown): number => {
@@ -224,10 +264,10 @@ export const fetchPayoutPaystubs = async (nodes: string[]): Promise<PaystubPerio
   };
 
   const sanitizeRecord = (item: Record<string, unknown>): PaystubRecord => ({
-    source: String(item.source ?? ""),
-    satelliteId: String(item.satelliteId ?? item.satellite_id ?? ""),
-    period: String(item.period ?? ""),
-    created: String(item.created ?? ""),
+    source: String(item.source ?? ''),
+    satelliteId: String(item.satelliteId ?? item.satellite_id ?? ''),
+    period: String(item.period ?? ''),
+    created: String(item.created ?? ''),
     usageAtRest: ensureNumber(item.usageAtRest ?? item.usage_at_rest),
     usageGet: ensureNumber(item.usageGet ?? item.usage_get),
     usagePut: ensureNumber(item.usagePut ?? item.usage_put),
@@ -250,11 +290,11 @@ export const fetchPayoutPaystubs = async (nodes: string[]): Promise<PaystubPerio
 
   const periods: Record<string, PaystubRecord[]> = {};
   const rawPeriods =
-    raw && typeof raw === "object" && raw !== null && "periods" in raw
+    raw && typeof raw === 'object' && raw !== null && 'periods' in raw
       ? ((raw as { periods?: unknown }).periods ?? {})
       : {};
 
-  if (rawPeriods && typeof rawPeriods === "object") {
+  if (rawPeriods && typeof rawPeriods === 'object') {
     for (const [period, records] of Object.entries(rawPeriods as Record<string, unknown>)) {
       if (!Array.isArray(records)) {
         continue;
@@ -262,7 +302,7 @@ export const fetchPayoutPaystubs = async (nodes: string[]): Promise<PaystubPerio
 
       const normalized: PaystubRecord[] = [];
       for (const entry of records) {
-        if (!entry || typeof entry !== "object") {
+        if (!entry || typeof entry !== 'object') {
           continue;
         }
         normalized.push(sanitizeRecord(entry as Record<string, unknown>));
@@ -276,20 +316,20 @@ export const fetchPayoutPaystubs = async (nodes: string[]): Promise<PaystubPerio
 
   const disqualifications: DisqualEntry[] = [];
   const rawDisquals =
-    raw && typeof raw === "object" && raw !== null && "disqualifications" in raw
+    raw && typeof raw === 'object' && raw !== null && 'disqualifications' in raw
       ? ((raw as { disqualifications?: unknown }).disqualifications ?? [])
       : [];
 
   if (Array.isArray(rawDisquals)) {
     for (const entry of rawDisquals) {
-      if (!entry || typeof entry !== "object") {
+      if (!entry || typeof entry !== 'object') {
         continue;
       }
       const item = entry as Record<string, unknown>;
       disqualifications.push({
-        node: String(item.node ?? ""),
-        satelliteId: String(item.satelliteId ?? item.satellite_id ?? ""),
-        period: String(item.period ?? ""),
+        node: String(item.node ?? ''),
+        satelliteId: String(item.satelliteId ?? item.satellite_id ?? ''),
+        period: String(item.period ?? ''),
       });
     }
   }
@@ -297,24 +337,32 @@ export const fetchPayoutPaystubs = async (nodes: string[]): Promise<PaystubPerio
   return { periods, disqualifications };
 };
 
-export const fetchIntervalTransfers = async (nodes: string[], intervalLength: string, numberOfIntervals: number) => {
-  const response = await apiClient.post("/transfer-grouped/intervals", { nodes, intervalLength, numberOfIntervals });
+export const fetchIntervalTransfers = async (
+  nodes: string[],
+  intervalLength: string,
+  numberOfIntervals: number,
+) => {
+  const response = await apiClient.post('/transfer-grouped/intervals', {
+    nodes,
+    intervalLength,
+    numberOfIntervals,
+  });
   return response.data;
 };
 
 export const fetchIp24Status = async (): Promise<IP24StatusResponse> => {
-  const response = await apiClient.get("/ip24");
+  const response = await apiClient.get('/ip24');
   const data = response.data;
-  if (!data || typeof data !== "object") {
+  if (!data || typeof data !== 'object') {
     return {};
   }
   return data as IP24StatusResponse;
 };
 
 export const fetchActiveCompactions = async (): Promise<ActiveCompactionsResponse> => {
-  const response = await apiClient.get("/hashstore-compaction/active");
+  const response = await apiClient.get('/hashstore-compaction/active');
   const data = response.data;
-  if (!data || typeof data !== "object") {
+  if (!data || typeof data !== 'object') {
     return {};
   }
 
@@ -326,17 +374,17 @@ export const fetchActiveCompactions = async (): Promise<ActiveCompactionsRespons
 
     const parsed: ActiveCompaction[] = [];
     for (const entry of entries) {
-      if (!entry || typeof entry !== "object") {
+      if (!entry || typeof entry !== 'object') {
         continue;
       }
       const record = entry as Record<string, unknown>;
-      const startedAt = String(record.startedAt ?? "");
+      const startedAt = String(record.startedAt ?? '');
       if (!startedAt) {
         continue;
       }
       parsed.push({
-        satelliteId: String(record.satelliteId ?? ""),
-        store: String(record.store ?? ""),
+        satelliteId: String(record.satelliteId ?? ''),
+        store: String(record.store ?? ''),
         startedAt,
       });
     }
@@ -349,15 +397,19 @@ export const fetchActiveCompactions = async (): Promise<ActiveCompactionsRespons
   return result;
 };
 
-export const fetchTransferTotals = async (nodes: string[], interval: string): Promise<TransferTotalsResponse> => {
-  const response = await apiClient.post("/transfer-grouped/totals", { nodes, interval });
+export const fetchTransferTotals = async (
+  nodes: string[],
+  interval: string,
+): Promise<TransferTotalsResponse> => {
+  const response = await apiClient.post('/transfer-grouped/totals', { nodes, interval });
   const raw = response.data;
 
   const totals: Record<string, TransferTotalsNode> = {};
-  const rawTotals = raw && typeof raw === "object" ? (raw as Record<string, unknown>).totals : undefined;
-  if (rawTotals && typeof rawTotals === "object") {
+  const rawTotals =
+    raw && typeof raw === 'object' ? (raw as Record<string, unknown>).totals : undefined;
+  if (rawTotals && typeof rawTotals === 'object') {
     for (const [node, entry] of Object.entries(rawTotals as Record<string, unknown>)) {
-      if (!entry || typeof entry !== "object") {
+      if (!entry || typeof entry !== 'object') {
         continue;
       }
 
@@ -383,7 +435,12 @@ export const fetchTransferTotals = async (nodes: string[], interval: string): Pr
     }
   }
 
-  const intervalSeconds = toNumeric((raw ?? {}) && typeof raw === "object" ? (raw as Record<string, unknown>).intervalSeconds ?? (raw as Record<string, unknown>).interval_seconds : 0);
+  const intervalSeconds = toNumeric(
+    (raw ?? {}) && typeof raw === 'object'
+      ? ((raw as Record<string, unknown>).intervalSeconds ??
+          (raw as Record<string, unknown>).interval_seconds)
+      : 0,
+  );
 
   return {
     intervalSeconds,
@@ -395,18 +452,26 @@ export const fetchDiskUsageChange = async (
   nodes: string[],
   intervalDays: number,
 ): Promise<DiskUsageChangeResponse> => {
-  const response = await apiClient.post("/diskusage/usage-change", { nodes, intervalDays });
+  const response = await apiClient.post('/diskusage/usage-change', { nodes, intervalDays });
   const raw = response.data ?? {};
 
-  const currentPeriod = String((raw as Record<string, unknown>).currentPeriod ?? (raw as Record<string, unknown>).current_period ?? "");
-  const referencePeriod = String((raw as Record<string, unknown>).referencePeriod ?? (raw as Record<string, unknown>).reference_period ?? "");
+  const currentPeriod = String(
+    (raw as Record<string, unknown>).currentPeriod ??
+      (raw as Record<string, unknown>).current_period ??
+      '',
+  );
+  const referencePeriod = String(
+    (raw as Record<string, unknown>).referencePeriod ??
+      (raw as Record<string, unknown>).reference_period ??
+      '',
+  );
 
   const nodesRaw = (raw as Record<string, unknown>).nodes;
-  const nodesMap: DiskUsageChangeResponse["nodes"] = {};
+  const nodesMap: DiskUsageChangeResponse['nodes'] = {};
 
-  if (nodesRaw && typeof nodesRaw === "object") {
+  if (nodesRaw && typeof nodesRaw === 'object') {
     for (const [node, entry] of Object.entries(nodesRaw as Record<string, unknown>)) {
-      if (!entry || typeof entry !== "object") {
+      if (!entry || typeof entry !== 'object') {
         continue;
       }
 
@@ -437,21 +502,21 @@ export const fetchDiskUsageUsage = async (
   nodes: string[],
   intervalDays: number,
 ): Promise<DiskUsageUsageResponse> => {
-  const response = await apiClient.post("/diskusage/usage", { nodes, intervalDays });
+  const response = await apiClient.post('/diskusage/usage', { nodes, intervalDays });
   const raw = response.data ?? {};
 
-  const periods: DiskUsageUsageResponse["periods"] = {};
+  const periods: DiskUsageUsageResponse['periods'] = {};
   const periodEntries = (raw as Record<string, unknown>).periods;
 
-  if (periodEntries && typeof periodEntries === "object") {
+  if (periodEntries && typeof periodEntries === 'object') {
     for (const [period, periodValue] of Object.entries(periodEntries as Record<string, unknown>)) {
-      if (!periodValue || typeof periodValue !== "object") {
+      if (!periodValue || typeof periodValue !== 'object') {
         continue;
       }
 
       const nodesMap: Record<string, DiskUsageUsageNode> = {};
       for (const [nodeName, nodeValue] of Object.entries(periodValue as Record<string, unknown>)) {
-        if (!nodeValue || typeof nodeValue !== "object") {
+        if (!nodeValue || typeof nodeValue !== 'object') {
           continue;
         }
 
@@ -462,7 +527,7 @@ export const fetchDiskUsageUsage = async (
           usage: toNumeric(metrics.usage),
           trash: toNumeric(metrics.trash),
           reclaimable: toNumeric(metrics.reclaimable),
-          at: String(metrics.at ?? ""),
+          at: String(metrics.at ?? ''),
         };
       }
 
@@ -477,13 +542,13 @@ export const fetchSatelliteUsage = async (
   nodes: string[],
   numberOfPeriods: number,
 ): Promise<SatelliteUsageResponse> => {
-  const response = await apiClient.post("/satelliteusage/usage", { nodes, numberOfPeriods });
+  const response = await apiClient.post('/satelliteusage/usage', { nodes, numberOfPeriods });
   const raw = response.data ?? {};
 
   const periodsRaw = (raw as Record<string, unknown>).periods;
-  const periods: SatelliteUsageResponse["periods"] = {};
+  const periods: SatelliteUsageResponse['periods'] = {};
 
-  if (periodsRaw && typeof periodsRaw === "object") {
+  if (periodsRaw && typeof periodsRaw === 'object') {
     for (const [period, records] of Object.entries(periodsRaw as Record<string, unknown>)) {
       if (!Array.isArray(records)) {
         continue;
@@ -491,16 +556,16 @@ export const fetchSatelliteUsage = async (
 
       const normalized: SatelliteUsageRecord[] = [];
       for (const entry of records) {
-        if (!entry || typeof entry !== "object") {
+        if (!entry || typeof entry !== 'object') {
           continue;
         }
 
         const item = entry as Record<string, unknown>;
         const diskRaw = item.diskUsage ?? item.disk_usage;
         normalized.push({
-          source: String(item.source ?? ""),
-          satelliteId: String(item.satelliteId ?? item.satellite_id ?? ""),
-          period: String(item.period ?? ""),
+          source: String(item.source ?? ''),
+          satelliteId: String(item.satelliteId ?? item.satellite_id ?? ''),
+          period: String(item.period ?? ''),
           dlUsage: toNumeric(item.dlUsage ?? item.dl_usage),
           dlRepair: toNumeric(item.dlRepair ?? item.dl_repair),
           dlAudit: toNumeric(item.dlAudit ?? item.dl_audit),
@@ -530,23 +595,23 @@ export const fetchHashstoreSeries = async (
   if (satelliteId) body.satelliteId = satelliteId;
   if (store) body.store = store;
 
-  const response = await apiClient.post("/hashstore-compaction/series", body);
+  const response = await apiClient.post('/hashstore-compaction/series', body);
   const raw = response.data;
 
-  if (!raw || typeof raw !== "object") {
-    throw new Error("Unexpected hashstore series response format");
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('Unexpected hashstore series response format');
   }
 
   const record = raw as Record<string, unknown>;
-  const startTime = String(record.startTime ?? record.start_time ?? "");
-  const endTime = String(record.endTime ?? record.end_time ?? "");
+  const startTime = String(record.startTime ?? record.start_time ?? '');
+  const endTime = String(record.endTime ?? record.end_time ?? '');
   const bucketSeconds = toNumeric(record.bucketSeconds ?? record.bucket_seconds);
 
   const rawBuckets = Array.isArray(record.buckets) ? record.buckets : [];
   const buckets: HashstoreCompactionBucket[] = rawBuckets.map((b: unknown) => {
     const r = (b ?? {}) as Record<string, unknown>;
     return {
-      bucketStart: String(r.bucketStart ?? r.bucket_start ?? ""),
+      bucketStart: String(r.bucketStart ?? r.bucket_start ?? ''),
       numLogs: toNumeric(r.numLogs ?? r.num_logs),
       lenLogs: toNumeric(r.lenLogs ?? r.len_logs),
       setPercent: toNumeric(r.setPercent ?? r.set_percent),

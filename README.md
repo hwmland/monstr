@@ -91,6 +91,8 @@ Supported CLI flags
 - `--config-json JSONC` — Load backend settings from an inline JSONC value. This is mutually exclusive with `--config-file`.
 - `--source NAME:SPEC` (repeatable) — Declare a log source in the preferred sequence. Use `NAME:PATH` for local log files or `NAME:HOST:PORT` for remote TCP sources. Repeat the flag to declare multiple sources; their declared order is preserved at startup. Append `|http://localhost:14002` (or another HTTP(S) URL) to associate a nodeapi endpoint with the source.
 
+  **Deprecation notice:** Local file sources (`--source NAME:PATH` or JSONC `type: "file"`) are obsolete, are no longer guaranteed to work, and will be removed in a future release. Use streaming TCP sources (`--source NAME:HOST:PORT` or JSONC `type: "tcp"`) instead.
+
   Implementation note: you can use the companion project `hwmland/tailsender` as a lightweight remote sender that tails a file and forwards appended lines to Monstr over TCP. Configure a tailsender instance on the remote host and point Monstr at it with `--source name:host:port`.
 
 - `--host HOST` — Bind the API server to the specified host (default: `127.0.0.1`). Setting `--host 0.0.0.0` (or `--host ::`) makes the API listen on all network interfaces so the server becomes reachable from other machines on the network. Use this when running inside a container or when exposing the API to other hosts. Beware that binding to all interfaces exposes the API to your network; secure the host appropriately (firewall, auth) if used in production.
@@ -135,6 +137,7 @@ JSONC adds comments and trailing commas to JSON. The configuration is partial: o
   "nodegroups": [
     {
       "name": "group-a",
+      "icon": "mdi:home",
       "locations": [
         {
           "alias": "site-a",
@@ -184,9 +187,13 @@ JSONC adds comments and trailing commas to JSON. The configuration is partial: o
 
 Each node uses `type: "tcp"` with `host` and `port`, or `type: "file"` with `path`; `nodeapi_url` is optional. A location's IP24 expected-instance count is derived from the number of valid nodes in its `nodes` array. Node sources are applied in nodegroup, location, then node order. Nodegroup names are retained for future use. A node's optional `disqualifications` list inherits that node's name as the source; `satellite_id` may be omitted, `null`, or `"all"` to mean all satellites.
 
+Each nodegroup may optionally specify an MDI icon identifier such as `"icon": "mdi:home"` as a sibling of `name` and `locations`. The identifier must be a non-empty `mdi:<name>` value; the backend validates its syntax but does not contact Iconify. The browser loads configured icons from `https://api.iconify.design`, so the client browser needs network access to that service. Icons appear before member node names on node buttons and before group names in the nodegroup selector; if an icon cannot be loaded, selection remains usable and shows an accessible fallback.
+
 When `nodegroups` is present, it supplies the source, IP24, and disqualification settings. If omitted, those settings continue to use the legacy `MONSTR_SOURCES`, `MONSTR_IP24`, and `MONSTR_DISQUAL` values. The legacy repeatable `--source`, `--ip24`, and `--disqual` flags remain supported and replace their corresponding configured list. Explicit CLI flags override JSONC; JSONC overrides legacy environment variables and `.env`; defaults apply last.
 
-Unknown JSONC keys produce a warning and are ignored. Invalid entries in node, location, or disqualification lists produce a warning and are skipped; an all-invalid configured list becomes empty. Invalid scalar values, invalid list containers, or an unreadable/malformed JSONC document stop startup with a clear configuration error; setting errors include their config path.
+Unknown JSONC keys produce a warning and are ignored. Invalid entries in node, location, or disqualification lists produce a warning and are skipped; an all-invalid configured list becomes empty. Invalid scalar values, invalid list containers, or an unreadable/malformed JSONC document stop startup with a clear configuration error; setting errors include their config path. A configured group `icon` with invalid syntax also stops startup with its config path.
+
+Nodegroup names must be unique without regard to case; `All` and `<groups>` are reserved. Node names must be unique across groups and cannot equal `All` in any letter case. These identity conflicts stop startup. Empty groups are returned by the nodegroups API but disabled in the client selector.
 
 You can pass a JSONC file or inline JSONC from the CLI:
 
@@ -274,6 +281,7 @@ Notes:
 ### What the server serves
 
 - OpenAPI docs: once running, the backend exposes the OpenAPI UI at `http://<host>:<port>/api/docs` (default `http://127.0.0.1:8000/api/docs`).
+- Nodegroups API: `GET /api/nodegroups` returns active configured group names, their node names, and an optional MDI `icon` identifier. Empty groups are returned with an empty `nodes` array; groups are omitted when legacy sources override nodegroups.
 - Frontend SPA: if `client/dist` exists (a production build of the client), FastAPI will serve the compiled SPA at the root path `/` (for example `http://127.0.0.1:8000/`).
 
 - Overall status API: the server exposes a lightweight health/status endpoint at
@@ -549,6 +557,7 @@ services:
           "nodegroups": [
             {
               "name": "group-a",
+              "icon": "mdi:home",
               "locations": [
                 {
                   "alias": "site-a",

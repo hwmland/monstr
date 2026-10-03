@@ -68,6 +68,7 @@ class NodeLocationDefinition:
 class NodeGroupDefinition:
     name: str
     locations: Tuple[NodeLocationDefinition, ...]
+    icon: Optional[str] = None
 
 
 class Settings(BaseSettings):
@@ -218,6 +219,11 @@ class Settings(BaseSettings):
             raw_path = self.database_url.split("///", maxsplit=1)[-1]
             return Path(raw_path).expanduser().resolve()
         raise ValueError("Database URL is not pointing to a SQLite database")
+
+    @property
+    def has_active_nodegroups(self) -> bool:
+        """Return whether nodegroups define the active log-source list."""
+        return self._nodegroups_sources_active
 
     def get_retention_minutes(self, table_name: str) -> int:
         """Return retention in minutes for a given database table.

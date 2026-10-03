@@ -24,6 +24,7 @@ from ..api.routes import (
     ip24,
     loggers,
     logs,
+    nodegroups,
     nodes,
     overall_status,
     payout,
@@ -167,6 +168,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(logs.router)
     app.include_router(nodes.router)
+    app.include_router(nodegroups.router)
     app.include_router(reputations.router)
     app.include_router(transfer_grouped.router)
     app.include_router(transfers.router)

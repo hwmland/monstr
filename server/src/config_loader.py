@@ -62,6 +62,7 @@ _RETENTION_FIELDS = {
     "hashstore_compaction_minutes": "retention_hashstore_compaction_minutes",
 }
 _PERIOD_RE = re.compile(r"^\d{4}-\d{2}$")
+_MDI_ICON_RE = re.compile(r"^mdi:[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
 class ConfigError(ValueError):
@@ -227,14 +228,28 @@ def _parse_nodegroups(
     sources: list[str] = []
     ip24: list[str] = []
     disqual: list[str] = []
+    group_names: dict[str, str] = {}
+    node_names: dict[str, str] = {}
 
     for group_index, raw_group in enumerate(raw_nodegroups):
         group_path = f"nodegroups[{group_index}]"
         if not isinstance(raw_group, dict):
             _warn_skipped(group_path, "expected an object")
             continue
-        _warn_unknown(raw_group, {"name", "locations"}, group_path)
+        _warn_unknown(raw_group, {"name", "locations", "icon"}, group_path)
+        icon = _nodegroup_icon(raw_group, group_path)
         name = _non_empty_string(raw_group.get("name"), f"{group_path}.name")
+        if name is not None:
+            normalized_name = name.casefold()
+            if normalized_name == "all" or name == "<groups>":
+                raise ConfigError(f"Reserved nodegroup name at '{group_path}.name'")
+            previous_path = group_names.get(normalized_name)
+            if previous_path is not None:
+                raise ConfigError(
+                    f"Duplicate nodegroup name at '{group_path}.name' "
+                    f"(already declared at '{previous_path}')"
+                )
+            group_names[normalized_name] = f"{group_path}.name"
         locations_raw = raw_group.get("locations")
         if "locations" in raw_group and not isinstance(locations_raw, list):
             raise ConfigError(f"Invalid value at '{group_path}.locations': expected an array")
@@ -248,6 +263,11 @@ def _parse_nodegroups(
             if not isinstance(raw_location, dict):
                 _warn_skipped(location_path, "expected an object")
                 continue
+            if "icon" in raw_location:
+                raise ConfigError(
+                    f"Invalid value at '{location_path}.icon': group icons must be set at "
+                    f"'{group_path}.icon'"
+                )
             _warn_unknown(raw_location, {"alias", "ip", "nodes"}, location_path)
             alias = _non_empty_string(raw_location.get("alias"), f"{location_path}.alias")
             ip = _non_empty_string(raw_location.get("ip"), f"{location_path}.ip")
@@ -266,6 +286,13 @@ def _parse_nodegroups(
                 node_path = f"{location_path}.nodes[{node_index}]"
                 node = _parse_node(raw_node, node_path)
                 if node is not None:
+                    previous_path = node_names.get(node.name)
+                    if previous_path is not None:
+                        raise ConfigError(
+                            f"Duplicate node name at '{node_path}.name' "
+                            f"(already declared at '{previous_path}')"
+                        )
+                    node_names[node.name] = f"{node_path}.name"
                     nodes.append(node)
                     sources.append(_source_to_legacy_string(node))
                     disqual.extend(_disqualifications_to_legacy_strings(node))
@@ -273,9 +300,21 @@ def _parse_nodegroups(
             locations.append(NodeLocationDefinition(alias=alias, ip=ip, nodes=tuple(nodes)))
             ip24.append(f"{alias}|{ip}:{len(nodes)}")
 
-        nodegroups.append(NodeGroupDefinition(name=name, locations=tuple(locations)))
+        nodegroups.append(NodeGroupDefinition(name=name, locations=tuple(locations), icon=icon))
 
     return nodegroups, sources, ip24, disqual
+
+
+def _nodegroup_icon(raw_group: Mapping[str, Any], path: str) -> str | None:
+    if "icon" not in raw_group:
+        return None
+    icon = raw_group["icon"]
+    if not isinstance(icon, str) or not _MDI_ICON_RE.fullmatch(icon):
+        raise ConfigError(
+            f"Invalid value at '{path}.icon': expected a non-empty MDI icon identifier "
+            "such as 'mdi:home'"
+        )
+    return icon
 
 
 def _parse_node(raw_node: Any, path: str) -> NodeDefinition | None:
@@ -290,6 +329,8 @@ def _parse_node(raw_node: Any, path: str) -> NodeDefinition | None:
     if not name or ":" in name or "|" in name:
         _warn_skipped(f"{path}.name", "expected a non-empty source name without ':' or '|'")
         return None
+    if name.casefold() == "all":
+        raise ConfigError(f"Reserved node name at '{path}.name'")
     if kind not in ("file", "tcp"):
         _warn_skipped(f"{path}.type", "expected 'file' or 'tcp'")
         return None

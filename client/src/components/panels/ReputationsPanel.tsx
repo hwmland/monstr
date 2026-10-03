@@ -2,6 +2,7 @@ import type { FC } from "react";
 
 import { COLOR_STATUS_GREEN, COLOR_STATUS_RED, COLOR_STATUS_YELLOW } from "../../constants/colors";
 import useReputationsPanel from "../../hooks/useReputationsPanel";
+import useSelectedNodeGroupName from "../../hooks/useSelectedNodeGroupName";
 import type { SatelliteReputation } from "../../types";
 
 const formatScore = (value: number) => `${(value * 100).toFixed(2)}%`;
@@ -24,8 +25,14 @@ const buildTooltip = (satellite: SatelliteReputation) => {
 
 const ReputationsPanel: FC = () => {
   const { reputations, isLoading, error, refresh, selectedNodes } = useReputationsPanel();
+  const selectedNodeGroupName = useSelectedNodeGroupName(selectedNodes);
 
-  const subtitle = selectedNodes.length === 0 ? "Showing all nodes" : `Selected nodes: ${selectedNodes.join(", ")}`;
+  const subtitle =
+    selectedNodes.length === 0
+      ? "Showing all nodes"
+      : selectedNodeGroupName
+        ? `${selectedNodeGroupName} nodes`
+        : `Selected nodes: ${selectedNodes.join(", ")}`;
   const hasRecords = reputations.some((item) => item.satellites.length > 0);
 
   return (

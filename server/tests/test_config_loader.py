@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 
 import pytest
@@ -42,7 +43,8 @@ def test_loads_jsonc_and_flattens_nodegroups_in_declaration_order(tmp_path):
           "nodegroups": [
             {
               "name": "group-a",
-              "locations": [
+            "icon": "mdi:home",
+            "locations": [
                 {
                   "alias": "site-a",
                   "ip": "192.0.2.10",
@@ -77,6 +79,7 @@ def test_loads_jsonc_and_flattens_nodegroups_in_declaration_order(tmp_path):
     assert settings.log_batch_size == 8
     assert settings.unprocessed_log_dir == "./unprocessed"
     assert [group.name for group in settings.nodegroups] == ["group-a"]
+    assert settings.nodegroups[0].icon == "mdi:home"
     assert [source.name for source in settings.parsed_sources] == ["node-a", "node-b"]
     assert settings.parsed_sources[0].host == "logs.example.net"
     assert settings.parsed_sources[0].nodeapi == "https://node-a.example.net:14001/"
@@ -232,6 +235,106 @@ def test_invalid_list_entries_are_skipped_without_discarding_valid_entries(caplo
     assert [source.name for source in settings.parsed_sources] == ["good"]
     assert settings.parsed_ip24[0].expected_instances == 1
     assert "Skipping invalid configuration entry" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("nodegroups", "message"),
+    [
+        (
+            [
+                {"name": "East", "locations": []},
+                {"name": "east", "locations": []},
+            ],
+            "Duplicate nodegroup name",
+        ),
+        ([{"name": "ALL", "locations": []}], "Reserved nodegroup name"),
+        ([{"name": "<groups>", "locations": []}], "Reserved nodegroup name"),
+        (
+            [
+                {
+                    "name": "first",
+                    "locations": [
+                        {
+                            "alias": "site-a",
+                            "ip": "192.0.2.1",
+                            "nodes": [{"name": "node-a", "type": "file", "path": "./a.log"}],
+                        }
+                    ],
+                },
+                {
+                    "name": "second",
+                    "locations": [
+                        {
+                            "alias": "site-b",
+                            "ip": "192.0.2.2",
+                            "nodes": [{"name": "node-a", "type": "file", "path": "./b.log"}],
+                        }
+                    ],
+                },
+            ],
+            "Duplicate node name",
+        ),
+        (
+            [
+                {
+                    "name": "first",
+                    "locations": [
+                        {
+                            "alias": "site-a",
+                            "ip": "192.0.2.1",
+                            "nodes": [{"name": "ALL", "type": "file", "path": "./a.log"}],
+                        }
+                    ],
+                }
+            ],
+            "Reserved node name",
+        ),
+    ],
+)
+def test_nodegroup_selector_identity_violations_stop_startup(nodegroups, message):
+    with pytest.raises(ConfigError, match=message):
+        load_settings(config_json=json.dumps({"nodegroups": nodegroups}))
+
+
+def test_empty_nodegroups_are_allowed_when_their_memberships_are_empty():
+    settings = load_settings(
+        config_json='{"nodegroups":[{"name":"empty-a","locations":[]},{"name":"empty-b","locations":[]}]}'
+    )
+
+    assert [group.name for group in settings.nodegroups] == ["empty-a", "empty-b"]
+    assert settings.parsed_sources == []
+
+
+@pytest.mark.parametrize(
+    "icon",
+    [None, "", "home", "mdi:", "mdi:Home", "lucide:home", "mdi:home outline"],
+)
+def test_invalid_nodegroup_icons_stop_startup(icon):
+    config = {"nodegroups": [{"name": "group-a", "locations": [], "icon": icon}]}
+
+    with pytest.raises(ConfigError, match=r"nodegroups\[0\]\.icon"):
+        load_settings(config_json=json.dumps(config))
+
+
+def test_location_level_icon_reports_required_group_level_path():
+    config = {
+        "nodegroups": [
+            {
+                "name": "group-a",
+                "locations": [
+                    {
+                        "alias": "site-a",
+                        "ip": "192.0.2.10",
+                        "nodes": [],
+                        "icon": "mdi:home",
+                    }
+                ],
+            }
+        ]
+    }
+
+    with pytest.raises(ConfigError, match="group icons must be set at 'nodegroups\\[0\\]\\.icon'"):
+        load_settings(config_json=json.dumps(config))
 
 
 def test_unknown_keys_warn_and_are_ignored(caplog):
