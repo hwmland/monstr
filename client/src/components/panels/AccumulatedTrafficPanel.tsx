@@ -16,12 +16,21 @@ import Legend from "../Legend";
 
 type Mode = "size" | "count" | "speed";
 const MODE_VALUES = ["size", "count", "speed"] as const satisfies readonly Mode[];
-type Range = "5m" | "1h" | "6h" | "30h" | "8d" | "30d" | "90d";
-const RANGE_VALUES = ["5m", "1h", "6h", "30h", "8d", "30d", "90d"] as const satisfies readonly Range[];
+export type Range = "5m" | "1h" | "6h" | "30h" | "8d" | "30d" | "90d" | "1y";
+export const RANGE_VALUES = [
+  "5m",
+  "1h",
+  "6h",
+  "30h",
+  "8d",
+  "30d",
+  "90d",
+  "1y",
+] as const satisfies readonly Range[];
 type Layout = "stacked" | "grouped";
 const LAYOUT_VALUES = ["stacked", "grouped"] as const satisfies readonly Layout[];
 
-const RANGE_MAP: Record<Range, { intervalLength: string; numberOfIntervals: number }> = {
+export const RANGE_MAP: Record<Range, { intervalLength: string; numberOfIntervals: number }> = {
   "5m": { intervalLength: "10s", numberOfIntervals: 30 },
   "1h": { intervalLength: "2m", numberOfIntervals: 30 },
   "6h": { intervalLength: "10m", numberOfIntervals: 36 },
@@ -29,19 +38,21 @@ const RANGE_MAP: Record<Range, { intervalLength: string; numberOfIntervals: numb
   "8d": { intervalLength: "6h", numberOfIntervals: 32 },
   "30d": { intervalLength: "1d", numberOfIntervals: 30 },
   "90d": { intervalLength: "3d", numberOfIntervals: 30 },
+  "1y": { intervalLength: "7d", numberOfIntervals: 53 },
 };
 
-const LONG_RANGE_OPTIONS: Array<{ value: Range; label: string }> = [
+export const LONG_RANGE_OPTIONS: Array<{ value: Range; label: string }> = [
   { value: "8d", label: "8d" },
   { value: "30d", label: "30d" },
   { value: "90d", label: "90d" },
+  { value: "1y", label: "1 year" },
 ];
 
 interface AccumulatedTrafficPanelProps {
   selectedNodes: string[];
 }
 
-const LONG_RANGE_SET = new Set<Range>(["8d", "30d", "90d"]);
+const LONG_RANGE_SET = new Set<Range>(["8d", "30d", "90d", "1y"]);
 
 const formatDayMonth = (date: Date) => {
   const day = String(date.getDate()).padStart(2, "0");
@@ -49,7 +60,10 @@ const formatDayMonth = (date: Date) => {
   return `${day}/${month}`;
 };
 
-const formatAxisLabel = (value: string, range: Range, use24h: boolean) => {
+const formatDayMonthYear = (date: Date) =>
+  `${formatDayMonth(date)}/${String(date.getFullYear()).padStart(4, "0")}`;
+
+export const formatAxisLabel = (value: string, range: Range, use24h: boolean) => {
   try {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) {
@@ -64,7 +78,7 @@ const formatAxisLabel = (value: string, range: Range, use24h: boolean) => {
   }
 };
 
-const formatTooltipLabel = (value: string, range: Range, use24h: boolean) => {
+export const formatTooltipLabel = (value: string, range: Range, use24h: boolean) => {
   try {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) {
@@ -74,6 +88,9 @@ const formatTooltipLabel = (value: string, range: Range, use24h: boolean) => {
       const dayMonth = formatDayMonth(date);
       const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: !use24h } as const);
       return `${dayMonth} ${time}`;
+    }
+    if (range === "1y") {
+      return formatDayMonthYear(date);
     }
     if (range === "30d" || range === "90d") {
       return formatDayMonth(date);
