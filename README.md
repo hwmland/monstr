@@ -23,6 +23,13 @@ Monstr is a full-stack STORJ log monitoring platform. The asynchronous FastAPI b
 - Node.js 18+
 - SQLite (bundled with standard Python installations)
 
+`server/requirements.txt` contains runtime dependencies. The development
+requirements also install the backend test tools:
+
+```powershell
+pip install -r server\requirements-dev.txt
+```
+
 ## Server
 
 ### Backend Setup
@@ -33,7 +40,7 @@ PowerShell (Windows)
 cd server
 python -m venv .vent.monstr
 .\.vent.monstr\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 ```
 
 Bash (macOS / Linux / WSL)
@@ -42,7 +49,7 @@ Bash (macOS / Linux / WSL)
 cd server
 python3 -m venv .vent.monstr
 source .vent.monstr/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 ```
 
 Deactivate the environment at any time with `deactivate`.
